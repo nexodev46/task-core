@@ -1,0 +1,13 @@
+{
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/icons-material": "^9.0.1",
+    "@mui/material": "^9.0.1"
+  },
+  "private": true,
+  "scripts": {
+    "migrate:tasks": "node ./tools/migrate_tasks.js",
+    "revert:tasks": "node ./tools/revert_tasks.js"
+  }
+}
