@@ -16,7 +16,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { useProject } from '../context/ProjectContext';
-import { db, storage } from '../firebase/config';
+import { db } from '../firebase/config';
 import {
   collection,
   query,
@@ -24,7 +24,6 @@ import {
   orderBy,
   addDoc,
   onSnapshot,
-  serverTimestamp,
   deleteDoc,
   doc,
   getDoc,
@@ -32,7 +31,6 @@ import {
   arrayUnion,
   arrayRemove
 } from 'firebase/firestore';
-import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { addActivity, markAsRead } from '../services/activityService';
 import { getProjectMembers } from '../services/projectService';
 
@@ -187,8 +185,11 @@ export default function MessagesPage() {
     // prevent accidental rapid duplicate sends of identical content
     try {
       const now = Date.now();
-      if (messageText && lastSentRef.current.text === messageText && (now - lastSentRef.current.time) < 800) return;
-      lastSentRef.current = { text: messageText, time: now };
+      const attachmentKey = attachedImage ? `${attachedImage.name}:${attachedImage.size}` : '';
+      const audioKey = audioBlob ? 'audio' : '';
+      const signature = `${messageText}|${attachmentKey}|${audioKey}`;
+      if (lastSentRef.current.text === signature && (now - lastSentRef.current.time) < 800) return;
+      lastSentRef.current = { text: signature, time: now };
     } catch (err) { /* ignore */ }
     // Clear the input immediately so the user doesn't see the previous text lingering
     setNewMessage('');
@@ -199,17 +200,12 @@ export default function MessagesPage() {
     try {
       if (attachedImage) {
         setUploadingImage(true);
-        const storagePath = `chat_images/${currentProject.id}/${Date.now()}_${attachedImage.name}`;
-        const imageRef = storageRef(storage, storagePath);
-        await uploadBytes(imageRef, attachedImage);
-        imageUrl = await getDownloadURL(imageRef);
+        imageUrl = await readFileAsDataURL(attachedImage);
       }
 
       if (audioBlob) {
-        const storagePath = `chat_audio/${currentProject.id}/${Date.now()}.webm`;
-        const audioRef = storageRef(storage, storagePath);
-        await uploadBytes(audioRef, audioBlob);
-        audioUrl = await getDownloadURL(audioRef);
+        const audioBlobUrl = URL.createObjectURL(audioBlob);
+        audioUrl = audioBlobUrl;
       }
 
       const docRef = await addDoc(collection(db, 'messages'), {
@@ -223,20 +219,6 @@ export default function MessagesPage() {
         imageUrl: imageUrl || null,
         audioUrl: audioUrl || null
       });
-
-      const newMessageEntry: Message = {
-        id: docRef.id,
-        projectId: currentProject.id,
-        senderId: user.uid,
-        senderName: user.displayName || user.email?.split('@')[0] || 'Anónimo',
-        timestamp: new Date(),
-        text: messageText,
-        read: false,
-        reactions: {},
-        imageUrl: imageUrl || null,
-        audioUrl: audioUrl || null
-      };
-      setMessages((prev) => [...prev, newMessageEntry]);
 
       const members = await getProjectMembers(currentProject.id);
       const recipients = members
@@ -257,6 +239,7 @@ export default function MessagesPage() {
       setNewMessage('');
       setAttachedImage(null);
       setImagePreview('');
+      setUploadingImage(false);
       if (audioPreview) {
         URL.revokeObjectURL(audioPreview);
       }
@@ -505,6 +488,19 @@ export default function MessagesPage() {
   };
 
   const getInitial = (name: string) => name.trim().charAt(0).toUpperCase();
+
+  const readFileAsDataURL = (file: File): Promise<string> => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result);
+      } else {
+        reject(new Error('Error leyendo imagen')); 
+      }
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
 
   if (!currentProject) {
     return (
@@ -823,8 +819,8 @@ export default function MessagesPage() {
           </Box>
         )}
 
-        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', width: '100%' }}>
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexShrink: 0 }}>
             <IconButton sx={{ color: '#64748b' }} type="button" onClick={handleOpenEmojiPicker}>
               <EmojiIcon />
             </IconButton>
@@ -866,9 +862,9 @@ export default function MessagesPage() {
               />
             </IconButton>
             <IconButton
-              sx={{ color: recording ? '#dc2626' : '#64748b' }}
+              sx={{ color: '#94a3b8' }}
               type="button"
-              onClick={recording ? handleStopRecording : handleStartRecording}
+              disabled
             >
               <MicIcon />
             </IconButton>
@@ -887,9 +883,11 @@ export default function MessagesPage() {
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
             onKeyDown={handleKeyDown}
-            // keep input enabled while sending so user can type another message
+            // keep input enabled while sending so user can type another mensaje
             disabled={false}
             sx={{
+              flex: 1,
+              minWidth: 0,
               bgcolor: '#ffffff',
               borderRadius: 2.5,
               border: '1px solid #cbd5e1',
@@ -909,7 +907,7 @@ export default function MessagesPage() {
           />
           <IconButton
             onClick={() => handleSendMessage()}
-            disabled={sending || (!newMessage.trim() && !attachedImage && !audioBlob) || uploadingImage || recording}
+            disabled={(!newMessage.trim() && !attachedImage && !audioBlob) || recording}
             color="primary"
             sx={{
               bgcolor: '#6366f1',
@@ -922,7 +920,7 @@ export default function MessagesPage() {
               }
             }}
           >
-            {sending ? <CircularProgress size={20} color="inherit" /> : <SendIcon />}
+            <SendIcon />
           </IconButton>
         </Box>
       </Paper>

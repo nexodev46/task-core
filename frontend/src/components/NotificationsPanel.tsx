@@ -53,8 +53,7 @@ export default function NotificationsPanel() {
     const q = query(
       collection(db, 'activities'),
       where('userId', '==', user.uid),
-      orderBy('timestamp', 'desc'),
-      limit(10)
+      limit(20)
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const items = snapshot.docs
