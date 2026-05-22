@@ -73,6 +73,7 @@ export default function MessagesPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const lastSentRef = useRef<{ text: string; time: number }>({ text: '', time: 0 });
 
   // Suscripción en tiempo real a los mensajes del proyecto actual
   useEffect(() => {
@@ -97,23 +98,28 @@ export default function MessagesPage() {
 
   // Marcar las notificaciones de mensajes como leídas cuando el usuario entra al chat
   useEffect(() => {
-    if (!user) return;
+    if (!user || !currentProject) return;
 
     const notificationsQuery = query(
       collection(db, 'activities'),
       where('userId', '==', user.uid),
       where('action', '==', 'new_message'),
+      where('projectId', '==', currentProject.id),
       where('read', '==', false)
     );
 
     const unsubscribe = onSnapshot(notificationsQuery, (snapshot) => {
-      snapshot.docs.forEach((activityDoc) => {
-        markAsRead(activityDoc.id).catch((err) => console.error('Error marcando mensaje como leído:', err));
+      const ids = snapshot.docs.map(d => d.id);
+      if (ids.length === 0) return;
+      // Optimistic local broadcast so the notifications UI updates immediately
+      try { window.dispatchEvent(new CustomEvent('activitiesMarkedRead', { detail: { ids } })); } catch (err) { /* ignore */ }
+      ids.forEach((activityId) => {
+        markAsRead(activityId).catch((err) => console.error('Error marcando mensaje como leído:', err));
       });
     });
 
     return unsubscribe;
-  }, [user]);
+  }, [user, currentProject]);
 
   // Auto-scroll al final cuando llegan nuevos mensajes
   useEffect(() => {
@@ -125,8 +131,11 @@ export default function MessagesPage() {
       if (imagePreview) {
         URL.revokeObjectURL(imagePreview);
       }
+      if (audioPreview) {
+        URL.revokeObjectURL(audioPreview);
+      }
     };
-  }, [imagePreview]);
+  }, [imagePreview, audioPreview]);
 
   useEffect(() => {
     if (!messages.length) return;
@@ -172,9 +181,17 @@ export default function MessagesPage() {
     fetchProfiles();
   }, [messages, userProfiles]);
 
-  const handleSendMessage = async (overrideText?: string) => {
-    const messageText = overrideText !== undefined ? overrideText : newMessage.trim();
+  const handleSendMessage = async (overrideText?: string | MouseEvent<HTMLElement>) => {
+    const messageText = typeof overrideText === 'string' ? overrideText : newMessage.trim();
     if ((!messageText && !attachedImage && !audioBlob) || !currentProject || !user) return;
+    // prevent accidental rapid duplicate sends of identical content
+    try {
+      const now = Date.now();
+      if (messageText && lastSentRef.current.text === messageText && (now - lastSentRef.current.time) < 800) return;
+      lastSentRef.current = { text: messageText, time: now };
+    } catch (err) { /* ignore */ }
+    // Clear the input immediately so the user doesn't see the previous text lingering
+    setNewMessage('');
     setSending(true);
     let imageUrl: string | null = null;
     let audioUrl: string | null = null;
@@ -207,19 +224,35 @@ export default function MessagesPage() {
         audioUrl: audioUrl || null
       });
 
+      const newMessageEntry: Message = {
+        id: docRef.id,
+        projectId: currentProject.id,
+        senderId: user.uid,
+        senderName: user.displayName || user.email?.split('@')[0] || 'Anónimo',
+        timestamp: new Date(),
+        text: messageText,
+        read: false,
+        reactions: {},
+        imageUrl: imageUrl || null,
+        audioUrl: audioUrl || null
+      };
+      setMessages((prev) => [...prev, newMessageEntry]);
+
       const members = await getProjectMembers(currentProject.id);
       const recipients = members
         .map((member) => member.userId)
         .filter((recipientId) => recipientId !== user.uid);
 
-      await Promise.all(
+      Promise.all(
         recipients.map((recipientId) =>
           addActivity(recipientId, 'new_message', currentProject.name, {
             projectId: currentProject.id,
             messageId: docRef.id
           })
         )
-      );
+      ).catch((err) => {
+        console.error('Error al crear notificaciones de mensaje:', err);
+      });
 
       setNewMessage('');
       setAttachedImage(null);
@@ -801,7 +834,15 @@ export default function MessagesPage() {
               onClose={handleCloseEmojiPicker}
               anchorOrigin={{ vertical: 'top', horizontal: 'left' }}
               transformOrigin={{ vertical: 'bottom', horizontal: 'left' }}
-              PaperProps={{ sx: { p: 1.25, borderRadius: 3, boxShadow: '0 18px 50px rgba(15, 23, 42, 0.12)' } }}
+              slotProps={{
+                paper: {
+                  sx: {
+                    p: 1.25,
+                    borderRadius: 3,
+                    boxShadow: '0 18px 50px rgba(15, 23, 42, 0.12)'
+                  }
+                }
+              }}
             >
               <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(34px, 1fr))', gap: 1 }}>
                 {emojiOptions.map((emoji) => (
@@ -846,7 +887,8 @@ export default function MessagesPage() {
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
             onKeyDown={handleKeyDown}
-            disabled={sending}
+            // keep input enabled while sending so user can type another message
+            disabled={false}
             sx={{
               bgcolor: '#ffffff',
               borderRadius: 2.5,
@@ -866,8 +908,8 @@ export default function MessagesPage() {
             }}
           />
           <IconButton
-            onClick={handleSendMessage}
-            disabled={(!newMessage.trim() && !attachedImage && !audioBlob) || sending || uploadingImage || recording}
+            onClick={() => handleSendMessage()}
+            disabled={sending || (!newMessage.trim() && !attachedImage && !audioBlob) || uploadingImage || recording}
             color="primary"
             sx={{
               bgcolor: '#6366f1',
@@ -880,7 +922,7 @@ export default function MessagesPage() {
               }
             }}
           >
-            <SendIcon />
+            {sending ? <CircularProgress size={20} color="inherit" /> : <SendIcon />}
           </IconButton>
         </Box>
       </Paper>

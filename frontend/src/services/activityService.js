@@ -1,5 +1,5 @@
 import { db } from '../firebase/config';
-import { collection, addDoc, query, where, getDocs, orderBy, limit, updateDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, query, where, getDocs, orderBy, limit, updateDoc, doc, deleteDoc } from 'firebase/firestore';
 
 // Guardar una actividad (extras permitidos en payload)
 export const addActivity = async (userId, action, taskTitle, extras = {}) => {
@@ -34,5 +34,5 @@ export const markAsRead = async (activityId) => {
 // Eliminar una actividad
 export const deleteActivity = async (activityId) => {
   const ref = doc(db, 'activities', activityId);
-  await import('firebase/firestore').then(({ deleteDoc }) => deleteDoc(ref));
+  await deleteDoc(ref);
 };

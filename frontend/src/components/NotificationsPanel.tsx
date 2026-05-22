@@ -20,6 +20,26 @@ export default function NotificationsPanel() {
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const [activities, setActivities] = useState<any[]>([]);
   const prevActivitiesRef = useRef<any[]>([]);
+  const activitiesRef = useRef<any[]>([]);
+
+  const updateActivitiesState = (updater: (prev: any[]) => any[]) => {
+    setActivities((prev) => {
+      const next = updater(prev);
+      activitiesRef.current = next;
+      return next;
+    });
+  };
+
+  // Listen for optimistic 'activitiesMarkedRead' events to update UI immediately
+  useEffect(() => {
+    const handler = (e: any) => {
+      const ids: string[] = e?.detail?.ids || [];
+      if (!ids || !ids.length) return;
+      updateActivitiesState((prev) => prev.map((a) => ids.includes(a.id) ? { ...a, read: true } : a));
+    };
+    window.addEventListener('activitiesMarkedRead', handler as EventListener);
+    return () => window.removeEventListener('activitiesMarkedRead', handler as EventListener);
+  }, []);
 
   const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
     try { return localStorage.getItem('notifications_sound') !== 'false'; } catch { return true; }
@@ -33,12 +53,14 @@ export default function NotificationsPanel() {
     const q = query(
       collection(db, 'activities'),
       where('userId', '==', user.uid),
+      orderBy('timestamp', 'desc'),
       limit(10)
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const items = snapshot.docs
         .map(d => ({ id: d.id, ...d.data() } as any))
         .sort((a: any, b: any) => (b.timestamp?.toDate ? b.timestamp.toDate().getTime() : 0) - (a.timestamp?.toDate ? a.timestamp.toDate().getTime() : 0));
+      activitiesRef.current = items;
       setActivities(items);
     }, (err) => {
       console.error('Activities listener error', err);
@@ -66,7 +88,9 @@ export default function NotificationsPanel() {
       unsubscribers.forEach(u => u());
       unsubscribers.length = 0;
 
-                tasks.forEach(task => {
+      const currentActivities = activitiesRef.current;
+
+      tasks.forEach(task => {
         const commentsRef = collection(db, 'tasks', task.id, 'comments');
         const q = query(commentsRef, orderBy('createdAt', 'desc'), limit(1));
         const unsub = onSnapshot(q, (snap) => {
@@ -75,7 +99,7 @@ export default function NotificationsPanel() {
               const c = { id: change.doc.id, ...(change.doc.data() as any) };
               // si el comentario fue escrito por otro usuario, y no existe actividad para este commentId, crearla
               if (c.userId !== user.uid) {
-                const exists = activities.some(a => a.action === 'new_comment' && a.commentId === c.id);
+                const exists = currentActivities.some(a => a.action === 'new_comment' && a.commentId === c.id);
                 if (!exists) {
                   try {
                     addActivity(user.uid, 'new_comment', (task as any).title || 'Tarea', { taskId: (task as any).id, commentId: c.id });
@@ -93,7 +117,7 @@ export default function NotificationsPanel() {
     }, (err) => console.error('Tasks for comments listener error', err));
 
     return () => { unsubscribeTasks(); unsubscribers.forEach(u => u()); };
-  }, [user, activities]);
+  }, [user, currentProject]);
 
   // Listener adicional: revisar tareas del proyecto para generar alertas de vencimiento
   useEffect(() => {
@@ -109,6 +133,7 @@ export default function NotificationsPanel() {
       const tasks = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       const now = new Date();
       const oneDay = 24 * 60 * 60 * 1000;
+      const currentActivities = activitiesRef.current;
 
       tasks.forEach((task: any) => {
         // Solo procesar tareas que cumplen los criterios: asignada, fecha, y "Por hacer"
@@ -121,8 +146,8 @@ export default function NotificationsPanel() {
         const due = rawDue.toDate ? rawDue.toDate() : new Date(rawDue);
         const diff = due.getTime() - now.getTime();
 
-        const alreadyHasOverdue = activities.some(a => a.action === 'overdue' && a.taskId === task.id);
-        const alreadyHasDueSoon = activities.some(a => a.action === 'due_soon' && a.taskId === task.id);
+        const alreadyHasOverdue = currentActivities.some(a => a.action === 'overdue' && a.taskId === task.id);
+        const alreadyHasDueSoon = currentActivities.some(a => a.action === 'due_soon' && a.taskId === task.id);
 
         if (diff < 0 && !alreadyHasOverdue) {
           // tarea vencida
@@ -145,7 +170,7 @@ export default function NotificationsPanel() {
     });
 
     return () => unsubscribeTasks();
-  }, [user, activities]);
+  }, [user, currentProject]);
 
   const unreadCount = activities.filter(a => !a.read).length;
 
@@ -155,15 +180,21 @@ export default function NotificationsPanel() {
 
   const handleItemClick = async (activityId: string) => {
     try {
+      updateActivitiesState((prev) => prev.map((a) => a.id === activityId ? { ...a, read: true } : a));
       await markAsRead(activityId);
     } catch (err) {
       console.error('Error marking as read', err);
     }
   };
 
+  const removeActivityFromState = (activityId: string) => {
+    updateActivitiesState((prev) => prev.filter((a) => a.id !== activityId));
+  };
+
   const handleDelete = async (activityId: string) => {
     try {
       await deleteActivity(activityId);
+      removeActivityFromState(activityId);
     } catch (err) {
       console.error('Error deleting activity', err);
     }
@@ -174,6 +205,7 @@ export default function NotificationsPanel() {
       if (!activity.invitationId || !activity.projectId || !user) return;
       await acceptInvitation(activity.invitationId, activity.projectId, user.uid);
       await deleteActivity(activity.id);
+      removeActivityFromState(activity.id);
     } catch (err) {
       console.error('Error aceptando invitación:', err);
     }
@@ -186,6 +218,7 @@ export default function NotificationsPanel() {
       const invitationRef = doc(db, 'invitations', activity.invitationId);
       await updateDoc(invitationRef, { status: 'rejected' });
       await deleteActivity(activity.id);
+      removeActivityFromState(activity.id);
     } catch (err) {
       console.error('Error rechazando invitación:', err);
     }
@@ -194,9 +227,10 @@ export default function NotificationsPanel() {
   const handleToggleRead = async (activityId: string, currentlyRead: boolean) => {
     try {
       if (!currentlyRead) {
+        updateActivitiesState((prev) => prev.map((a) => a.id === activityId ? { ...a, read: true } : a));
         await markAsRead(activityId);
       } else {
-        // allow unmarking as read by setting read: false
+        updateActivitiesState((prev) => prev.map((a) => a.id === activityId ? { ...a, read: false } : a));
         const { updateDoc, doc } = await import('firebase/firestore');
         const r = doc(db, 'activities', activityId);
         await updateDoc(r, { read: false });

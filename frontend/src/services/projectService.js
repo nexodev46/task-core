@@ -23,31 +23,41 @@ export const getUserProjects = async (userId) => {
   const membersQuery = query(collection(db, 'projectMembers'), where('userId', '==', userId));
   const membersSnap = await getDocs(membersQuery);
   const projectIds = membersSnap.docs.map(doc => doc.data().projectId);
-  const projects = [];
-  for (const id of projectIds) {
-    const projDoc = await getDoc(doc(db, 'projects', id));
-    if (projDoc.exists()) projects.push({ id: projDoc.id, ...projDoc.data() });
-  }
-  return projects;
+  if (projectIds.length === 0) return [];
+
+  const projects = await Promise.all(
+    projectIds.map(async (id) => {
+      const projDoc = await getDoc(doc(db, 'projects', id));
+      return projDoc.exists() ? { id: projDoc.id, ...projDoc.data() } : null;
+    })
+  );
+
+  return projects.filter(Boolean);
 };
 
 // Obtener miembros de un proyecto
 export const getProjectMembers = async (projectId) => {
   const membersQuery = query(collection(db, 'projectMembers'), where('projectId', '==', projectId));
   const snap = await getDocs(membersQuery);
-  const members = [];
+  const memberMap = new Map();
+
   for (const memberDoc of snap.docs) {
-    const userDoc = await getDoc(doc(db, 'users', memberDoc.data().userId));
+    const data = memberDoc.data();
+    const userId = data.userId;
+    if (memberMap.has(userId)) continue;
+
+    const userDoc = await getDoc(doc(db, 'users', userId));
     if (userDoc.exists()) {
-      members.push({
-        userId: memberDoc.data().userId,
-        role: memberDoc.data().role,
+      memberMap.set(userId, {
+        userId,
+        role: data.role,
         email: userDoc.data().email,
         fullName: userDoc.data().fullName
       });
     }
   }
-  return members;
+
+  return Array.from(memberMap.values());
 };
 
 export const deleteProject = async (projectId) => {
@@ -65,4 +75,9 @@ export const deleteProject = async (projectId) => {
   for (const taskDoc of taskSnap.docs) {
     await deleteDoc(doc(db, 'tasks', taskDoc.id));
   }
+};
+
+export const updateProjectName = async (projectId, name) => {
+  const projectRef = doc(db, 'projects', projectId);
+  await updateDoc(projectRef, { name });
 };

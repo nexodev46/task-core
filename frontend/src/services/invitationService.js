@@ -1,5 +1,5 @@
 import { db } from '../firebase/config';
-import { collection, addDoc, query, where, getDocs, updateDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, query, where, getDocs, updateDoc, doc, runTransaction, getDoc } from 'firebase/firestore';
 import { addActivity } from './activityService';
 
 // Validar que el email existe en la colección users
@@ -40,25 +40,53 @@ export const sendInvitationEmail = async (email, projectName, invitationLink, se
 
 // Crear una invitación (guarda en Firestore)
 export const createInvitation = async (email, projectId, invitedBy, projectName = 'Proyecto', senderName = 'Usuario') => {
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  if (!normalizedEmail) {
+    throw new Error('El correo electrónico es obligatorio.');
+  }
+
   // Validar que el email existe
-  const invitedUserId = await validateEmailExists(email);
+  const invitedUserId = await validateEmailExists(normalizedEmail);
   if (!invitedUserId) {
-    throw new Error(`El email ${email} no está registrado en Task Core. Debe registrarse primero.`);
+    throw new Error(`El email ${normalizedEmail} no está registrado en Task Core. Debe registrarse primero.`);
+  }
+
+  // Evitar crear invitaciones duplicadas pendientes para el mismo proyecto y email
+  const existingInviteQ = query(
+    collection(db, 'invitations'),
+    where('projectId', '==', projectId),
+    where('email', '==', normalizedEmail),
+    where('status', '==', 'pending')
+  );
+  const existingInviteSnap = await getDocs(existingInviteQ);
+  if (!existingInviteSnap.empty) {
+    throw new Error(`Ya existe una invitación pendiente para ${normalizedEmail}.`);
   }
 
   const token = crypto.randomUUID();
-  const docRef = await addDoc(collection(db, 'invitations'), {
-    email,
-    projectId,
-    token,
-    status: 'pending',
-    invitedBy,
-    createdAt: new Date()
+  const invitationDocId = `${projectId}_${encodeURIComponent(normalizedEmail)}`;
+  const invitationRef = doc(db, 'invitations', invitationDocId);
+
+  await runTransaction(db, async (transaction) => {
+    const existingDoc = await transaction.get(invitationRef);
+    if (existingDoc.exists() && existingDoc.data()?.status === 'pending') {
+      throw new Error(`Ya existe una invitación pendiente para ${normalizedEmail}.`);
+    }
+    transaction.set(invitationRef, {
+      email: normalizedEmail,
+      projectId,
+      token,
+      status: 'pending',
+      invitedBy,
+      createdAt: new Date()
+    });
   });
+
+  const docRef = await getDoc(invitationRef);
 
   // Enviar email de invitación
   const invitationLink = `${typeof window !== 'undefined' ? window.location.origin : ''}/accept-invite/${token}`;
-  await sendInvitationEmail(email, projectName, invitationLink, senderName);
+  await sendInvitationEmail(normalizedEmail, projectName, invitationLink, senderName);
 
   // Crear actividad/notificación en la app
   try {
@@ -71,7 +99,24 @@ export const createInvitation = async (email, projectId, invitedBy, projectName 
     console.error('Error creando actividad de invitación:', err);
   }
 
-  return { id: docRef.id, token };
+  return { id: docRef.id, token, email: normalizedEmail };
+};
+
+// Obtener invitaciones pendientes de un proyecto
+export const getPendingInvitations = async (projectId) => {
+  const q = query(
+    collection(db, 'invitations'),
+    where('projectId', '==', projectId),
+    where('status', '==', 'pending')
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
+// Cancelar invitación pendiente
+export const cancelInvitation = async (invitationId) => {
+  const invitationRef = doc(db, 'invitations', invitationId);
+  await updateDoc(invitationRef, { status: 'cancelled' });
 };
 
 // Obtener invitación por token (solo pendientes)
