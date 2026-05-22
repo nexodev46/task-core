@@ -3,6 +3,9 @@ import { useSearch } from '../context/SearchContext';
 import { useAuth } from '../context/AuthContext';
 import { useProject } from '../context/ProjectContext';
 import { Grid, Paper, Typography, Button, TextField, Dialog, DialogTitle, DialogContent, DialogActions, Chip, Box } from '@mui/material';
+import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
+import CommentIcon from '@mui/icons-material/Comment';
+import LabelImportantIcon from '@mui/icons-material/LabelImportant';
 import { subscribeToTasks, createTask, updateTask } from '../services/taskService';
 
 type StatusLabel = 'Por hacer' | 'En progreso' | 'Completado';
@@ -15,6 +18,7 @@ interface TaskItem {
   comments: number;
   status?: string;
   projectId?: string;
+  dueDate?: string | Date;
 }
 
 type TaskBoard = Record<StatusLabel, TaskItem[]>;
@@ -83,6 +87,12 @@ export default function KanbanBoard() {
     'Completado': filteredTasks.filter((t) => (t.status || 'Por hacer') === 'Completado')
   };
 
+  const columnColors: Record<StatusLabel, string> = {
+    'Por hacer': '#ffedd5',   // tono naranja muy suave
+    'En progreso': '#dbeafe', // tono azul muy suave
+    'Completado': '#dcfce7'   // tono verde muy suave
+  };
+
   const addTag = () => {
     const tag = newTag.trim();
     if (tag && !newTask.tags.includes(tag)) {
@@ -112,11 +122,11 @@ export default function KanbanBoard() {
     setNewTask({ title: '', description: '', status: 'Por hacer', tags: [] });
     setNewTag('');
   };
-  const handleDragStart = (e: DragEvent<HTMLDivElement>, id: string | number, status: StatusLabel) => {
+  const handleDragStart = (e: any, id: string | number, status: StatusLabel) => {
     e.dataTransfer.setData('taskId', String(id));
     e.dataTransfer.setData('sourceStatus', status);
   };
-  const handleDrop = (e: DragEvent<HTMLDivElement>, targetStatus: StatusLabel) => {
+  const handleDrop = (e: any, targetStatus: StatusLabel) => {
     const taskId = parseInt(e.dataTransfer.getData('taskId'));
     const sourceStatus = e.dataTransfer.getData('sourceStatus') as StatusLabel;
     if (sourceStatus === targetStatus) return;
@@ -138,30 +148,54 @@ export default function KanbanBoard() {
     }
   };
 
-  const handleDragOver = (e: DragEvent<HTMLDivElement>) => e.preventDefault();
+  const handleDragOver = (e: any) => e.preventDefault();
 
   return (
     <Box>
       <Grid container spacing={3}>
         {Object.entries(grouped).map(([status, taskList]) => (
-          <Grid component="div" size={{ xs: 12, md: 4 }} key={status} onDrop={(e) => handleDrop(e, status as StatusLabel)} onDragOver={handleDragOver}>
-            <Paper sx={{ p: 2, bgcolor: '#f5f5f5', borderRadius: 2, minHeight: 400 }}>
+          <Box key={status} sx={{ width: { xs: '100%', md: '33.3333%' }, minWidth: 0 }} onDrop={(e: DragEvent<HTMLDivElement>) => handleDrop(e, status as StatusLabel)} onDragOver={handleDragOver}>
+            <Paper sx={{ p: 2, bgcolor: columnColors[status as StatusLabel] || '#f5f5f5', borderRadius: 2, minHeight: 400, borderLeft: `6px solid ${columnColors[status as StatusLabel] || '#f5f5f5'}` }}>
               <Typography variant="h6" align="center" gutterBottom>{status}</Typography>
               {taskList.map((task: TaskItem) => (
-                <Paper key={task.id} draggable onDragStart={(e) => handleDragStart(e, task.id, status as StatusLabel)} sx={{ p: 2, mb: 2, cursor: 'grab' }}>
-                  <Typography
-                    variant="subtitle1"
-                    sx={{
-                      fontWeight: 'bold',
-                      wordBreak: 'break-word',
-                      overflowWrap: 'anywhere',
-                      fontSize: '1.05rem',
-                      lineHeight: 1.15,
-                      mb: 0.5,
-                    }}
-                  >
-                    {task.title}
-                  </Typography>
+                <Paper
+                  key={task.id}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, task.id, status as StatusLabel)}
+                  sx={{
+                    p: 2,
+                    mb: 2,
+                    cursor: 'grab',
+                    borderRadius: 3,
+                    boxShadow: '0 10px 25px rgba(15, 23, 42, 0.08)',
+                    transition: 'transform 0.25s ease, box-shadow 0.25s ease',
+                    '&:hover': {
+                      transform: 'translateY(-4px)',
+                      boxShadow: '0 18px 35px rgba(15, 23, 42, 0.16)',
+                    },
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 1 }}>
+                    <Typography
+                      variant="subtitle1"
+                      sx={{
+                        fontWeight: 'bold',
+                        wordBreak: 'break-word',
+                        overflowWrap: 'anywhere',
+                        fontSize: '1.05rem',
+                        lineHeight: 1.2,
+                      }}
+                    >
+                      {task.title}
+                    </Typography>
+                    <Chip
+                      icon={<LabelImportantIcon fontSize="small" />}
+                      label={status}
+                      size="small"
+                      variant="outlined"
+                      sx={{ textTransform: 'none', fontWeight: 600 }}
+                    />
+                  </Box>
                   <Typography
                     variant="body2"
                     sx={{
@@ -169,30 +203,54 @@ export default function KanbanBoard() {
                       overflowWrap: 'anywhere',
                       whiteSpace: 'normal',
                       fontSize: '0.95rem',
-                      lineHeight: 1.3,
+                      lineHeight: 1.5,
                       color: 'text.secondary',
+                      mb: 1.5,
                     }}
                   >
                     {task.description}
                   </Typography>
                   <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', my: 1 }}>
-                    {task.tags.map((tag: string) => <Typography key={tag} variant="caption" sx={{ bgcolor: '#e0e0e0', px: 1, borderRadius: 1 }}>{tag}</Typography>)}
+                    {task.tags.map((tag: string) => (
+                      <Chip
+                        key={tag}
+                        label={tag}
+                        size="small"
+                        variant="outlined"
+                        sx={{ borderColor: 'divider', textTransform: 'none' }}
+                      />
+                    ))}
                   </Box>
-                  <Typography variant="caption">{task.comments} Comentarios</Typography>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1, mt: 2, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'text.secondary' }}>
+                      <CalendarTodayIcon fontSize="small" />
+                      <Typography variant="caption" sx={{ ml: 0.25 }}>
+                        {task.dueDate
+                          ? new Date(task.dueDate).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })
+                          : 'Sin fecha'}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'text.secondary' }}>
+                      <CommentIcon fontSize="small" />
+                      <Typography variant="caption" sx={{ ml: 0.25 }}>
+                        {task.comments} comentarios
+                      </Typography>
+                    </Box>
+                  </Box>
                 </Paper>
               ))}
               <Button fullWidth variant="text" onClick={() => setOpen(true)} sx={{ mt: 1, color: 'primary.main', textTransform: 'none' }}>
                 + Añadir tarjeta
               </Button>
             </Paper>
-          </Grid>
+          </Box>
         ))}
       </Grid>
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Nueva Tarea</DialogTitle>
         <DialogContent>
-          <TextField select label="Columna" fullWidth margin="dense" value={newTask.status} onChange={e => setNewTask({...newTask, status: e.target.value as StatusLabel})} slotProps={{ select: { native: true } }}>
+          <TextField select label="Columna" fullWidth margin="dense" value={newTask.status} onChange={e => setNewTask({...newTask, status: (e.target.value as StatusLabel)})} slotProps={{ select: { native: true } }}>
             {Object.keys(tasks).map(s => <option key={s} value={s}>{s}</option>)}
           </TextField>
           <TextField label="Título" fullWidth margin="dense" value={newTask.title} onChange={e => setNewTask({...newTask, title: e.target.value})} />

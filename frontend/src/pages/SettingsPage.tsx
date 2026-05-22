@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, ChangeEvent } from 'react';
 import {
   Box, Typography, Paper, Divider, Switch, FormControlLabel,
   Button, TextField, Avatar, Alert, Snackbar, Slider,
@@ -19,13 +19,14 @@ import {
   Save as SaveIcon,
   Edit as EditIcon,
   CheckCircle as CheckIcon,
+  FiberManualRecord as BulletIcon,
   Settings as SettingsIcon
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { useThemeContext } from '../context/ThemeContext';
 import { useLanguage } from '../context/LanguageContext';
 import { updateProfile, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
-import { doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { doc, deleteDoc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { useNavigate } from 'react-router-dom';
 
@@ -45,7 +46,7 @@ function TabPanel({ children, value, index, ...other }: TabPanelProps) {
 
 export default function SettingsPage() {
   const { user } = useAuth();
-  const { mode, toggleTheme } = useThemeContext();
+  const { mode, toggleTheme, backgroundColor, setBackgroundColor } = useThemeContext();
   const { language, setLanguage, t } = useLanguage();
   const navigate = useNavigate();
   const [tabValue, setTabValue] = useState(0);
@@ -57,9 +58,38 @@ export default function SettingsPage() {
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [avatarBase64, setAvatarBase64] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState('Usuario');
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [typedPoints, setTypedPoints] = useState<string[]>([]);
+
+  const accountDetailsPoints = [
+    'Tablero Kanban visual — Organiza tus tareas en tres columnas: Por hacer, En progreso y Completado. Arrastra y suelta para cambiar el estado al instante.',
+    'Colaboración en tiempo real — Invita a tu equipo por correo, crea proyectos compartidos y trabaja juntos con chat y comentarios integrados.',
+    'Reportes y estadísticas — Visualiza gráficos de tu productividad, filtra por período y exporta datos a CSV para análisis externos.',
+    'Calendario integrado — Todas las tareas con fecha de vencimiento aparecen en un calendario mensual; arrastra tareas para cambiar la fecha.',
+    'Búsqueda instantánea — Encuentra cualquier tarea escribiendo en el buscador global; filtra por título o descripción en tiempo real.',
+    'Perfil personalizable — Edita tu nombre, cambia tu contraseña y sube una foto de perfil (se guarda directamente, sin servicios extra).',
+    'Modo oscuro y claro — Adapta la interfaz a tu gusto con un solo clic; la preferencia se guarda automáticamente.',
+    'Diseño responsivo — Task Core funciona perfectamente en computadoras, tablets y móviles, con la misma experiencia en todos los dispositivos.',
+    
+  ];
+
+  // Colores de fondo predefinidos
+  const backgroundColorOptions = [
+    { label: 'Blanco', value: '#ffffff' },
+    { label: 'Crema', value: '#fffef5' },
+    { label: 'Azul claro', value: '#e3f2fd' },
+    { label: 'Verde claro', value: '#e8f5e9' },
+    { label: 'Rosa claro', value: '#fce4ec' },
+    { label: 'Púrpura claro', value: '#f3e5f5' },
+    { label: 'Naranja claro', value: '#fff3e0' },
+    { label: 'Gris claro', value: '#f5f5f5' }
+  ];
 
   // Cargar preferencias desde localStorage
   useEffect(() => {
@@ -67,6 +97,8 @@ export default function SettingsPage() {
     if (savedFont) setFontSize(parseInt(savedFont));
     const savedColor = localStorage.getItem('taskcore-primary-color');
     if (savedColor) setPrimaryColor(savedColor);
+    const savedBgColor = localStorage.getItem('taskcore-background-color');
+    if (savedBgColor) setBackgroundColor(savedBgColor);
     const savedNotif = localStorage.getItem('taskcore-notifications');
     if (savedNotif) setNotificationsEnabled(savedNotif === 'true');
   }, []);
@@ -76,24 +108,126 @@ export default function SettingsPage() {
     localStorage.setItem('taskcore-language', language);
     localStorage.setItem('taskcore-font-size', fontSize.toString());
     localStorage.setItem('taskcore-primary-color', primaryColor);
+    localStorage.setItem('taskcore-background-color', backgroundColor);
     localStorage.setItem('taskcore-notifications', notificationsEnabled.toString());
     setMessage({ type: 'success', text: t('messages.preferencesSaved') });
   };
 
-  // Actualizar nombre de usuario en Firebase Auth y Firestore
-  const handleUpdateName = async () => {
+  useEffect(() => {
     if (!user) return;
-    setLoading(true);
+
+    const loadUserProfile = async () => {
+      try {
+        const profileRef = doc(db, 'users', user.uid);
+        const profileSnap = await getDoc(profileRef);
+        if (profileSnap.exists()) {
+          const profileData = profileSnap.data();
+          if (profileData.fullName && !user.displayName) {
+            setDisplayName(profileData.fullName);
+          }
+          if (profileData.avatarBase64) {
+            setAvatarBase64(profileData.avatarBase64);
+            setAvatarPreview(profileData.avatarBase64);
+          }
+          if (profileData.role) {
+            setUserRole(profileData.role);
+          }
+        }
+      } catch (error) {
+        console.error('Error cargando perfil de usuario:', error);
+      }
+    };
+
+    loadUserProfile();
+  }, [user]);
+
+  useEffect(() => {
+    if (tabValue !== 0 || editingName) return;
+
+    setTypedPoints([]);
+    let lineIndex = 0;
+    let charIndex = 0;
+    let currentText = '';
+    let isActive = true;
+    let timeoutId = 0;
+
+    const typePoint = () => {
+      if (!isActive || lineIndex >= accountDetailsPoints.length) return;
+      const line = accountDetailsPoints[lineIndex];
+
+      if (charIndex < line.length) {
+        currentText += line[charIndex];
+        charIndex += 1;
+        setTypedPoints((prev) => {
+          const next = [...prev];
+          if (next.length === lineIndex) next.push(currentText);
+          else next[lineIndex] = currentText;
+          return next;
+        });
+        timeoutId = window.setTimeout(typePoint, 28);
+      } else {
+        lineIndex += 1;
+        charIndex = 0;
+        currentText = '';
+        if (lineIndex < accountDetailsPoints.length) {
+          timeoutId = window.setTimeout(typePoint, 300);
+        }
+      }
+    };
+
+    timeoutId = window.setTimeout(typePoint, 450);
+    return () => {
+      isActive = false;
+      window.clearTimeout(timeoutId);
+    };
+  }, [tabValue, editingName]);
+
+  const handleAvatarChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setMessage({ type: 'error', text: 'Por favor selecciona una imagen válida' });
+      return;
+    }
+    if (file.size > 500 * 1024) {
+      setMessage({ type: 'error', text: 'La imagen no debe superar 500 KB' });
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result as string;
+      setAvatarBase64(base64);
+      setAvatarPreview(base64);
+    };
+    reader.onerror = () => {
+      setMessage({ type: 'error', text: 'No se pudo cargar la imagen' });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveProfile = async () => {
+    if (!user) return;
+    setSavingProfile(true);
     try {
-      await updateProfile(user, { displayName });
+      if (displayName !== user.displayName) {
+        await updateProfile(user, { displayName });
+      }
       const userRef = doc(db, 'users', user.uid);
-      await updateDoc(userRef, { fullName: displayName });
+      await setDoc(
+        userRef,
+        {
+          fullName: displayName,
+          avatarBase64: avatarBase64 || null
+        },
+        { merge: true }
+      );
+      setMessage({ type: 'success', text: t('messages.preferencesSaved') });
       setEditingName(false);
-      setMessage({ type: 'success', text: t('messages.nameUpdated') });
     } catch (error: any) {
       setMessage({ type: 'error', text: error.message });
     } finally {
-      setLoading(false);
+      setSavingProfile(false);
     }
   };
 
@@ -169,7 +303,7 @@ export default function SettingsPage() {
           </Button>
         </Box>
       </Box>
-      <Paper sx={{ borderRadius: 3, overflow: 'hidden', boxShadow: 3, mb: 3 }}>
+      <Paper sx={{ borderRadius: '16px', overflow: 'hidden', boxShadow: 3, mb: 3 }}>
         <Tabs
           value={tabValue}
           onChange={handleTabChange}
@@ -192,57 +326,104 @@ export default function SettingsPage() {
         {/* Perfil */}
         <TabPanel value={tabValue} index={0}>
           <Box sx={{ p: 3 }}>
-            <Box sx={{ display: 'grid', gap: 3, gridTemplateColumns: { xs: '1fr', md: '1.3fr 2.7fr' } }}>
-              <Box sx={{ textAlign: 'center' }}>
-                <Avatar sx={{ width: 120, height: 120, margin: '0 auto', bgcolor: 'primary.main' }}>
-                  {user?.displayName?.charAt(0) || user?.email?.charAt(0)}
-                </Avatar>
-                <Typography variant="h6" sx={{ mt: 2 }}>{user?.displayName || 'Usuario'}</Typography>
-                <Typography variant="body2" color="textSecondary">{user?.email}</Typography>
+            <Box sx={{ display: 'grid', gap: 3, gridTemplateColumns: { xs: '1fr', md: '1.1fr 1.9fr' } }}>
+              <Card sx={{ borderRadius: '16px', boxShadow: 3, p: 3, bgcolor: 'background.paper' }}>
+                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                  <Avatar
+                    src={avatarPreview || avatarBase64 || undefined}
+                    sx={{ width: 120, height: 120, bgcolor: 'primary.main', fontSize: '3rem' }}
+                  >
+                    {!avatarPreview && !avatarBase64 && (user?.displayName?.charAt(0) || user?.email?.charAt(0))}
+                  </Avatar>
+                  <Button variant="contained" component="label" sx={{ mt: 1 }}>
+                    Cambiar imagen
+                    <input hidden accept="image/*" type="file" onChange={handleAvatarChange} />
+                  </Button>
+                  <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center' }}>
+                    JPG/PNG máximo 500 KB. Vista previa antes de guardar.
+                  </Typography>
+                </Box>
+
+                <Divider sx={{ my: 3 }} />
+
+                <Typography variant="h6" gutterBottom>
+                  Información principal
+                </Typography>
+                <List>
+                  <ListItem>
+                    <ListItemIcon>
+                      <PersonIcon />
+                    </ListItemIcon>
+                    <ListItemText primary="Nombre" secondary={user?.displayName || displayName || 'No establecido'} />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemIcon>
+                      <PersonIcon />
+                    </ListItemIcon>
+                    <ListItemText primary="Correo electrónico" secondary={user?.email} />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemIcon>
+                      <CheckIcon />
+                    </ListItemIcon>
+                    <ListItemText primary="ID de usuario" secondary={user?.uid} />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemIcon>
+                      <SettingsIcon />
+                    </ListItemIcon>
+                    <ListItemText primary="Rol" secondary={userRole} />
+                  </ListItem>
+                </List>
                 <Button variant="outlined" startIcon={<EditIcon />} sx={{ mt: 2 }} onClick={() => setEditingName(true)}>
                   Editar perfil
                 </Button>
-              </Box>
-              <Box>
-                <Card variant="outlined">
-                  <CardContent>
-                    <Typography variant="h6" gutterBottom>Información de la cuenta</Typography>
-                    <Divider sx={{ mb: 2 }} />
-                    {editingName ? (
-                      <Box>
-                        <TextField
-                          label="Nombre completo"
-                          fullWidth
-                          value={displayName}
-                          onChange={(e) => setDisplayName(e.target.value)}
-                          margin="normal"
-                        />
-                        <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
-                          <Button variant="contained" onClick={handleUpdateName} disabled={loading}>
-                            {loading ? <CircularProgress size={24} /> : 'Guardar'}
-                          </Button>
-                          <Button onClick={() => setEditingName(false)}>Cancelar</Button>
-                        </Box>
-                      </Box>
-                    ) : (
-                      <List>
-                        <ListItem>
-                          <ListItemIcon><PersonIcon /></ListItemIcon>
-                          <ListItemText primary="Nombre" secondary={user?.displayName || 'No establecido'} />
+              </Card>
+
+              <Card sx={{ borderRadius: '16px', boxShadow: 3, p: 3, bgcolor: 'background.paper' }}>
+                <Typography variant="h6" gutterBottom>
+                  Detalles de la cuenta
+                </Typography>
+                <Divider sx={{ mb: 2 }} />
+                {editingName ? (
+                  <Box sx={{ display: 'grid', gap: 2 }}>
+                    <TextField
+                      label="Nombre completo"
+                      fullWidth
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                    />
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+                      <Button variant="contained" onClick={handleSaveProfile} disabled={savingProfile}>
+                        {savingProfile ? <CircularProgress size={20} /> : 'Guardar cambios'}
+                      </Button>
+                      <Button variant="outlined" onClick={() => setEditingName(false)}>
+                        Cancelar
+                      </Button>
+                    </Box>
+                  </Box>
+                ) : (
+                  typedPoints.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary">
+                      Preparando detalles de la cuenta...
+                    </Typography>
+                  ) : (
+                    <List sx={{ p: 0, '& .MuiListItem-root': { alignItems: 'flex-start' } }}>
+                      {typedPoints.map((point, index) => (
+                        <ListItem key={index} sx={{ py: 1, pl: 0 }}>
+                          <ListItemIcon sx={{ minWidth: 32, mt: '4px' }}>
+                            <BulletIcon sx={{ fontSize: 10 }} />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={point || '\u00a0'}
+                            sx={{ '& .MuiTypography-root': { lineHeight: 1.6, fontSize: '0.95rem' } }}
+                          />
                         </ListItem>
-                        <ListItem>
-                          <ListItemIcon><PersonIcon /></ListItemIcon>
-                          <ListItemText primary="Correo electrónico" secondary={user?.email} />
-                        </ListItem>
-                        <ListItem>
-                          <ListItemIcon><CheckIcon /></ListItemIcon>
-                          <ListItemText primary="ID de usuario" secondary={user?.uid} />
-                        </ListItem>
-                      </List>
-                    )}
-                  </CardContent>
-                </Card>
-              </Box>
+                      ))}
+                    </List>
+                  )
+                )}
+              </Card>
             </Box>
           </Box>
         </TabPanel>
@@ -260,6 +441,41 @@ export default function SettingsPage() {
                       control={<Switch checked={mode === 'dark'} onChange={toggleTheme} />}
                       label={mode === 'dark' ? t('settings.darkMode') : t('settings.lightMode')}
                     />
+                    <Box sx={{ mt: 3 }}>
+                      <Typography variant="subtitle2" gutterBottom>Color de fondo personalizado</Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+                        Elige un color predefinido o personaliza el tuyo:
+                      </Typography>
+                      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, mb: 2 }}>
+                        {backgroundColorOptions.map((option) => (
+                          <Box
+                            key={option.value}
+                            onClick={() => setBackgroundColor(option.value)}
+                            title={option.label}
+                            sx={{
+                              width: '100%',
+                              height: 50,
+                              backgroundColor: option.value,
+                              border: backgroundColor === option.value ? '3px solid #1e88e5' : '1px solid #ccc',
+                              borderRadius: '8px',
+                              cursor: 'pointer',
+                              transition: 'all 0.3s',
+                              '&:hover': { boxShadow: 2, transform: 'scale(1.05)' }
+                            }}
+                          />
+                        ))}
+                      </Box>
+                      <Typography variant="subtitle2" gutterBottom sx={{ mt: 2 }}>O selecciona tu propio color:</Typography>
+                      <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                        <input
+                          type="color"
+                          value={backgroundColor}
+                          onChange={(e) => setBackgroundColor(e.target.value)}
+                          style={{ width: 60, height: 50, border: 'none', cursor: 'pointer', borderRadius: '8px' }}
+                        />
+                        <Typography variant="body2" color="text.secondary">{backgroundColor}</Typography>
+                      </Box>
+                    </Box>
                     <Box sx={{ mt: 2 }}>
                       <Typography variant="subtitle2" gutterBottom>{t('settings.primaryColor')}</Typography>
                       <input
@@ -296,6 +512,10 @@ export default function SettingsPage() {
                         <MenuItem value="en">English</MenuItem>
                       </Select>
                     </FormControl>
+                    <Box sx={{ mt: 3, p: 2, bgcolor: 'background.paper', borderRadius: '8px', border: '1px solid', borderColor: 'divider' }}>
+                      <Typography variant="subtitle2" gutterBottom>Vista previa</Typography>
+                      <Typography variant="body2" color="text.secondary">El fondo se actualizará automáticamente cuando cambies de modo claro/oscuro.</Typography>
+                    </Box>
                     <Button variant="contained" startIcon={<SaveIcon />} onClick={savePreferences} sx={{ mt: 3 }}>
                       {t('settings.savePreferences')}
                     </Button>
@@ -419,7 +639,7 @@ export default function SettingsPage() {
                 <Typography variant="body2" sx={{ mt: 2 }}>
                   {t('settings.exportDescription')}
                 </Typography>
-                <Box sx={{ mt: 3, p: 2, bgcolor: 'background.paper', borderRadius: 2, border: 1, borderColor: 'divider' }}>
+                <Box sx={{ mt: 3, p: 2, bgcolor: 'background.paper', borderRadius: '16px', border: 1, borderColor: 'divider' }}>
                   <Typography variant="subtitle2" gutterBottom>{t('settings.deleteData')}</Typography>
                   <Typography variant="body2" color="textSecondary">
                     {t('settings.deleteDataDescription')}

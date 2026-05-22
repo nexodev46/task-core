@@ -3,12 +3,16 @@ import { Box, Drawer, AppBar, Toolbar, IconButton, TextField, InputAdornment, Av
 import MenuIcon from '@mui/icons-material/Menu';
 import { useState, useEffect } from 'react';
 import SearchIcon from '@mui/icons-material/Search';
+import { doc, getDoc } from 'firebase/firestore';
 
 import Sidebar from '../components/Sidebar';
 import { useSearch } from '../context/SearchContext';
 import NotificationsPanel from '../components/NotificationsPanel';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
+import { db } from '../firebase/config';
+import logoImage from '../assets/Lgo2.png';
+
 
 const drawerWidth = 260;
 
@@ -20,6 +24,7 @@ export default function DashboardLayout() {
   const { t } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
+  const [headerAvatar, setHeaderAvatar] = useState<string | null>(null);
 
   // Limpiar búsquedas no válidas o autocompletadas al volver al tablero
   useEffect(() => {
@@ -31,6 +36,49 @@ export default function DashboardLayout() {
     } catch (err) { /* ignore */ }
   }, [location.pathname, searchTerm, setSearchTerm]);
 
+  useEffect(() => {
+    if (!user) {
+      setHeaderAvatar(null);
+      return;
+    }
+
+    const loadHeaderAvatar = async () => {
+      try {
+        if (user.photoURL) {
+          setHeaderAvatar(user.photoURL);
+          return;
+        }
+
+        const profileRef = doc(db, 'profiles', user.uid);
+        const profileSnap = await getDoc(profileRef);
+        if (profileSnap.exists()) {
+          const data = profileSnap.data();
+          if (data.avatarBase64) {
+            setHeaderAvatar(data.avatarBase64);
+            return;
+          }
+          if (data.photoURL) {
+            setHeaderAvatar(data.photoURL);
+            return;
+          }
+        }
+
+        const userRef = doc(db, 'users', user.uid);
+        const userSnap = await getDoc(userRef);
+        if (userSnap.exists()) {
+          const data = userSnap.data();
+          if (data.avatarBase64) {
+            setHeaderAvatar(data.avatarBase64);
+          }
+        }
+      } catch (error) {
+        console.error('Error cargando avatar de header:', error);
+      }
+    };
+
+    loadHeaderAvatar();
+  }, [user]);
+
   return (
     <Box sx={{ display: 'flex' }}>
       {/* AppBar con buscador centrado y título Task Core a la izquierda */}
@@ -38,8 +86,8 @@ export default function DashboardLayout() {
         position="fixed"
         sx={{
           zIndex: (theme) => theme.zIndex.drawer + 1,
-          bgcolor: 'white',
-          color: 'black',
+          bgcolor: 'background.paper',
+          color: 'text.primary',
           boxShadow: 1,
         }}
       >
@@ -57,35 +105,27 @@ export default function DashboardLayout() {
           {/* Título de la app (logo + nombre). Mantener tamaño y no alterar layout */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mr: 2 }}>
             <Box
+              component="img"
+              src={logoImage}
+              alt="Task Core Logo"
               sx={{
-                width: 36,
-                height: 36,
+                width: 44,
+                height: 44,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                borderRadius: 1.5,
-                background: 'linear-gradient(135deg, #0c0f17 0%, #6f6f2b 100%)',
-                boxShadow: '0 4px 12px rgba(49, 55, 26, 0.3)',
+                borderRadius: 2,
+                objectFit: 'contain',
+                boxShadow: '0 8px 20px rgba(11, 39, 95, 0.28)',
+                border: '1px solid rgba(255, 255, 255, 0.18)',
               }}
-            >
-              <Typography
-                sx={{
-                  fontWeight: 900,
-                  fontSize: '1.2rem',
-                  color: 'white',
-                  letterSpacing: '-2px',
-                  textShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',
-                }}
-              >
-                TC
-              </Typography>
-            </Box>
+            />
             <Box sx={{ lineHeight: 1.1 }}>
               <Typography variant="h6" noWrap sx={{ fontWeight: '700', letterSpacing: 0.2 }}>
                 Task Core
               </Typography>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontSize: '0.7rem', mt: 0.15 }}>
-                V1.0
+                V1.2.0
               </Typography>
             </Box>
           </Box>
@@ -122,8 +162,12 @@ export default function DashboardLayout() {
 
           {/* Notificaciones y avatar */}
            <NotificationsPanel />
-          <Avatar sx={{ ml: 2, bgcolor: 'primary.main', cursor: 'pointer' }} onClick={() => navigate('/profile')}>
-            {user?.displayName?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || 'U'}
+          <Avatar
+            src={headerAvatar || undefined}
+            sx={{ ml: 2, bgcolor: 'primary.main', cursor: 'pointer' }}
+            onClick={() => navigate('/profile')}
+          >
+            {!headerAvatar && (user?.displayName?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || 'U')}
           </Avatar>
         </Toolbar>
       </AppBar>

@@ -386,7 +386,7 @@ export default function TeamPage() {
             {/* TAB 1: Invitar Miembros */}
             {tabValue === 1 && isMember && (
               <Box>
-                <Paper sx={{ p: 2.5, bgcolor: '#f9f9f9', borderRadius: 2, mb: 3 }}>
+                <Paper sx={{ p: 2.5, bgcolor: 'background.paper', borderRadius: 2, mb: 3 }}>
                   <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
                     <EmailIcon fontSize="small" /> Enviar Invitación
                   </Typography>

@@ -16,6 +16,10 @@ import {
   ListItem,
   ListItemIcon,
   ListItemText,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import HelpIcon from '@mui/icons-material/Help';
@@ -50,9 +54,9 @@ const faqs = [
 ];
 
 const tutorials = [
-  { title: 'Guía rápida del tablero Kanban', link: '#', description: 'Organiza tus tareas de forma visual y eficiente.' },
-  { title: 'Administrar proyectos y equipos', link: '#', description: 'Invita miembros, asigna proyectos y colabora.' },
-  { title: 'Personaliza tu espacio de trabajo', link: '#', description: 'Configura notificaciones, temas y preferencias.' },
+  { title: 'Guía rápida del tablero Kanban', link: 'https://youtu.be/LmEHS28j8V4?si=U_ykbr7LBL-XKAiA', description: 'Organiza tus tareas de forma visual y eficiente.' },
+  { title: 'Administrar proyectos y equipos', link: 'https://youtu.be/hBzOWi4FWss?si=J1wK-LaybOTn5YOW', description: 'Invita miembros, asigna proyectos y colabora.' },
+  { title: 'Personaliza tu espacio de trabajo', link: 'https://youtu.be/W0N5o0w5jPc?si=s_6Exy2bRvZYsqb4', description: 'Configura notificaciones, temas y preferencias.' },
 ];
 
 const resources = [
@@ -62,8 +66,66 @@ const resources = [
   { label: 'Guía de seguridad', href: '#' },
 ];
 
+const documentationContent = {
+  'Documentación de usuario': {
+    title: 'Documentación de Usuario',
+    content: [
+      '✗ NO compartir accesos de tu cuenta con terceros no autorizados.',
+      '✗ NO crear tareas con contenido ofensivo, ilegal o discriminatorio.',
+      '✗ NO usar la plataforma para enviar spam o contenido malicioso.',
+      '✗ NO intentar acceder a datos de otros usuarios sin permiso.',
+      '✗ NO subir archivos maliciosos o dañinos a las tareas.',
+      '✓ Usa las tareas de forma responsable y colaborativa.',
+      '✓ Respeta la privacidad y los datos de otros miembros del equipo.',
+      '✓ Reporta cualquier uso indebido a nexodev46@gmail.com.'
+    ]
+  },
+  'Política de privacidad': {
+    title: 'Política de Privacidad',
+    content: [
+      '✗ NO compartir tu contraseña con nadie, ni siquiera con administradores.',
+      '✗ NO permitir que otros accedan a tu cuenta personal.',
+      '✗ NO recopilar datos de otros usuarios sin su consentimiento.',
+      '✗ NO usar Task Core para procesar datos sensibles sin cumplimiento legal.',
+      '✗ NO vender, ceder o distribuir datos personales de usuarios.',
+      '✓ Tus datos personales están protegidos y encriptados.',
+      '✓ Solo nosotros accedemos a tus datos para mejorar el servicio.',
+      '✓ Puedes solicitar la eliminación de tus datos en cualquier momento.'
+    ]
+  },
+  'Términos de servicio': {
+    title: 'Términos de Servicio',
+    content: [
+      '✗ NO violar leyes locales, nacionales o internacionales.',
+      '✗ NO usar la plataforma para actividades ilegales o fraude.',
+      '✗ NO crear múltiples cuentas para evadir restricciones o bloqueos.',
+      '✗ NO interferir con la funcionalidad o disponibilidad del servicio.',
+      '✗ NO intentar acceder sin autorización a sistemas o datos de Task Core.',
+      '✓ Respeta los términos al crear tu cuenta.',
+      '✓ Utiliza Task Core solo para fines legítimos y profesionales.',
+      '✓ Reporta violaciones de términos a nexodev46@gmail.com.'
+    ]
+  },
+  'Guía de seguridad': {
+    title: 'Guía de Seguridad',
+    content: [
+      '✗ NO uses contraseñas débiles o repetidas (mínimo 8 caracteres).',
+      '✗ NO accedas desde dispositivos públicos o computadoras comprometidas.',
+      '✗ NO haga clic en enlaces sospechosos de supuestos correos de Task Core.',
+      '✗ NO comparta su URL de sesión activa con otras personas.',
+      '✗ NO descuide notificaciones de acceso no autorizado.',
+      '✓ Cambia tu contraseña regularmente (cada 3 meses).',
+      '✓ Habilita notificaciones de seguridad en tu perfil.',
+      '✓ Cierra sesión en dispositivos que no uses frecuentemente.',
+      '✓ Reporta accesos sospechosos inmediatamente.'
+    ]
+  }
+};
+
+
 export default function HelpPage() {
   const { user } = useAuth();
+  const [selectedDocument, setSelectedDocument] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: user?.displayName || '',
     email: user?.email || '',
@@ -244,15 +306,13 @@ export default function HelpPage() {
               {resources.map((resource) => (
                 <ListItem
                   key={resource.label}
-                  component="a"
-                  href={resource.href}
-                  target="_blank"
-                  rel="noreferrer"
+                  onClick={() => setSelectedDocument(resource.label)}
                   sx={{
                     borderRadius: 1,
                     mb: 1,
                     p: 1.5,
                     bgcolor: 'background.default',
+                    cursor: 'pointer',
                     '&:hover': { bgcolor: 'action.hover' },
                   }}
                 >
@@ -270,6 +330,43 @@ export default function HelpPage() {
           </Paper>
         </Box>
       </Box>
+
+      {/* Modal de documentación */}
+      <Dialog
+        open={!!selectedDocument}
+        onClose={() => setSelectedDocument(null)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ fontWeight: 700, fontSize: '1.3rem' }}>
+          {selectedDocument && documentationContent[selectedDocument as keyof typeof documentationContent]?.title}
+        </DialogTitle>
+        <DialogContent dividers>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+            {selectedDocument && documentationContent[selectedDocument as keyof typeof documentationContent]?.content.map((item, idx) => (
+              <Typography
+                key={idx}
+                sx={{
+                  fontSize: '0.95rem',
+                  color: item.startsWith('✗') ? 'error.main' : 'success.main',
+                  fontWeight: item.startsWith('✗') ? 600 : 500,
+                  p: 1,
+                  bgcolor: item.startsWith('✗') ? 'rgba(211, 47, 47, 0.08)' : 'rgba(76, 175, 80, 0.08)',
+                  borderRadius: 1,
+                  borderLeft: `3px solid ${item.startsWith('✗') ? '#d32f2f' : '#4caf50'}`
+                }}
+              >
+                {item}
+              </Typography>
+            ))}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSelectedDocument(null)} variant="contained">
+            Cerrar
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Snackbar de confirmación */}
       <Snackbar

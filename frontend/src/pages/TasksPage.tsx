@@ -1,18 +1,20 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type MouseEvent } from 'react';
 import {
   Box, Typography, Paper, TextField, InputAdornment, IconButton,
   FormControl, InputLabel, Select, MenuItem, Card, CardContent,
   Chip, Button, Dialog, DialogTitle, DialogContent, DialogActions,
-  Tooltip, Switch, FormControlLabel, CircularProgress, Alert
+  Tooltip, Switch, FormControlLabel, CircularProgress, Alert, Menu
 } from '@mui/material';
 import {
   Search as SearchIcon,
   Add as AddIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
   CheckCircle as CompleteIcon,
   RadioButtonUnchecked as PendingIcon,
-  PlayArrow as ProgressIcon
+  PlayArrow as ProgressIcon,
+  MoreVert as MoreVertIcon,
+  ChatBubbleOutlined as CommentIcon,
+  CalendarToday as CalendarTodayIcon,
+  Schedule as ScheduleIcon
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { useProject } from '../context/ProjectContext';
@@ -29,6 +31,7 @@ interface Task {
   status: TaskStatus;
   dueDate?: Date;
   createdAt: Date;
+  commentsCount?: number;
   tags?: string[];
 }
 
@@ -44,6 +47,12 @@ const statusLabels = {
   completed: 'Completado'
 };
 
+const statusCardColors = {
+  todo: '#fff8e1',
+  in_progress: '#e3f2fd',
+  completed: '#e8f5e9'
+};
+
 export default function TasksPage() {
   const { user } = useAuth();
   const { currentProject } = useProject();
@@ -57,6 +66,8 @@ export default function TasksPage() {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [formData, setFormData] = useState({ title: '', description: '', status: 'todo' as TaskStatus, dueDate: '' });
   const [error, setError] = useState('');
+  const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null);
+  const [menuTask, setMenuTask] = useState<Task | null>(null);
 
   // Cargar tareas en tiempo real para el proyecto actual
   useEffect(() => {
@@ -107,17 +118,50 @@ export default function TasksPage() {
       return task.title.toLowerCase().includes(text) || description.includes(text);
     });
 
+  const isTaskOverdue = (task: Task) => {
+    return task.dueDate ? task.dueDate < new Date() && task.status !== 'completed' : false;
+  };
+
   // Acciones
-  const handleDelete = async (id: string) => {
-    if (window.confirm('¿Eliminar esta tarea?')) {
-      await deleteDoc(doc(db, 'tasks', id));
-      setTasks(prev => prev.filter(t => t.id !== id));
-    }
+  const handleDeleteById = async (id: string) => {
+    await deleteDoc(doc(db, 'tasks', id));
+    setTasks(prev => prev.filter(t => t.id !== id));
   };
 
   const handleStatusChange = async (id: string, newStatus: TaskStatus) => {
     await updateDoc(doc(db, 'tasks', id), { status: newStatus, updatedAt: new Date() });
     setTasks(prev => prev.map(t => t.id === id ? { ...t, status: newStatus } : t));
+  };
+
+  const handleOpenMenu = (event: MouseEvent<HTMLElement>, task: Task) => {
+    setMenuAnchorEl(event.currentTarget);
+    setMenuTask(task);
+  };
+
+  const handleCloseMenu = () => {
+    setMenuAnchorEl(null);
+    setMenuTask(null);
+  };
+
+  const handleMenuEdit = () => {
+    if (menuTask) {
+      handleOpenDialog(menuTask);
+    }
+    handleCloseMenu();
+  };
+
+  const handleMenuDelete = async () => {
+    if (menuTask) {
+      await handleDeleteById(menuTask.id);
+    }
+    handleCloseMenu();
+  };
+
+  const handleMenuChangeState = (status: TaskStatus) => {
+    if (menuTask) {
+      handleStatusChange(menuTask.id, status);
+    }
+    handleCloseMenu();
   };
 
   const handleOpenDialog = (task?: Task) => {
@@ -245,24 +289,42 @@ export default function TasksPage() {
         <Box sx={{ display: 'grid', gap: 3, gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)', lg: 'repeat(3, 1fr)' } }}>
           {filteredTasks.map(task => (
             <Box key={task.id}>
-              <Card sx={{ maxWidth: 360, width: '100%', mx: 'auto', height: '100%', display: 'flex', flexDirection: 'column', borderRadius: 3, overflow: 'hidden', boxShadow: '0 12px 35px rgba(15, 23, 42, 0.08)', transition: 'transform 0.2s', '&:hover': { transform: 'translateY(-4px)' } }}>
-                <CardContent sx={{ flexGrow: 1, p: 3 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
-                    <Typography variant="h6" sx={{ fontWeight: 700, wordBreak: 'break-all', overflowWrap: 'break-word' }}>{task.title}</Typography>
-                    <Box>
-                      <Tooltip title="Editar">
-                        <IconButton size="small" onClick={() => handleOpenDialog(task)}><EditIcon fontSize="small" /></IconButton>
-                      </Tooltip>
-                      <Tooltip title="Eliminar">
-                        <IconButton size="small" onClick={() => handleDelete(task.id)}><DeleteIcon fontSize="small" /></IconButton>
-                      </Tooltip>
+              <Card sx={{ maxWidth: 360, width: '100%', mx: 'auto', height: '100%', display: 'flex', flexDirection: 'column', borderRadius: 3, overflow: 'hidden', backgroundColor: statusCardColors[task.status], border: '1px solid rgba(15, 23, 42, 0.12)', boxShadow: '0 18px 45px rgba(15, 23, 42, 0.10)', transition: 'transform 0.2s, border-color 0.2s', '&:hover': { transform: 'translateY(-4px)', borderColor: 'rgba(59, 130, 246, 0.35)' } }}>
+                <CardContent sx={{ flexGrow: 1, p: 3, position: 'relative' }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1, gap: 1 }}>
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography variant="h6" sx={{ fontWeight: 700, wordBreak: 'break-all', overflowWrap: 'break-word' }}>{task.title}</Typography>
+                      {isTaskOverdue(task) && (
+                        <Chip
+                          label="Atrasada"
+                          size="small"
+                          sx={{ mt: 1, bgcolor: '#ffebee', color: '#c62828', fontWeight: 700 }}
+                        />
+                      )}
                     </Box>
+                    <IconButton size="small" onClick={(event) => handleOpenMenu(event, task)}>
+                      <MoreVertIcon fontSize="small" />
+                    </IconButton>
                   </Box>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2, whiteSpace: 'pre-line', minHeight: 48, wordBreak: 'break-word', overflowWrap: 'break-word' }}>
+
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2, whiteSpace: 'pre-line', minHeight: 56, wordBreak: 'break-word', overflowWrap: 'break-word' }}>
                     {task.description || 'Sin descripción'}
                   </Typography>
 
-                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+                  {task.tags?.length ? (
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+                      {task.tags.map((tag, index) => (
+                        <Chip
+                          key={`${task.id}-tag-${index}`}
+                          label={tag}
+                          size="small"
+                          sx={{ bgcolor: 'rgba(25, 118, 210, 0.08)', color: '#1565c0', fontWeight: 600 }}
+                        />
+                      ))}
+                    </Box>
+                  ) : null}
+
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center', mb: 2 }}>
                     <Chip
                       label={statusLabels[task.status]}
                       size="small"
@@ -270,18 +332,32 @@ export default function TasksPage() {
                     />
                     {task.dueDate && (
                       <Chip
+                        icon={<ScheduleIcon fontSize="small" />}
                         label={`Vence ${task.dueDate.toLocaleDateString()}`}
                         size="small"
                         variant="outlined"
+                        sx={{ borderColor: '#cfd8dc', color: 'text.secondary' }}
+                      />
+                    )}
+                    {typeof task.commentsCount === 'number' && (
+                      <Chip
+                        icon={<CommentIcon fontSize="small" />}
+                        label={`${task.commentsCount} comentarios`}
+                        size="small"
+                        variant="outlined"
+                        sx={{ borderColor: '#cfd8dc', color: 'text.secondary' }}
                       />
                     )}
                   </Box>
 
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
-                    <Typography variant="caption" color="textSecondary">
-                      Creada: {task.createdAt?.toLocaleDateString()}
-                    </Typography>
-                    <Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, color: 'text.secondary', fontSize: '0.85rem' }}>
+                      <CalendarTodayIcon fontSize="small" />
+                      <Typography variant="caption">
+                        Creada: {task.createdAt?.toLocaleDateString()}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', gap: 0.5 }}>
                       {task.status !== 'completed' && (
                         <Tooltip title="Marcar como completada">
                           <IconButton size="small" onClick={() => handleStatusChange(task.id, 'completed')}><CompleteIcon fontSize="small" /></IconButton>
@@ -301,6 +377,19 @@ export default function TasksPage() {
                   </Box>
                 </CardContent>
               </Card>
+              <Menu
+                anchorEl={menuAnchorEl}
+                open={Boolean(menuAnchorEl) && menuTask?.id === task.id}
+                onClose={handleCloseMenu}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+              >
+                <MenuItem onClick={handleMenuEdit}>Editar</MenuItem>
+                <MenuItem onClick={handleMenuDelete}>Eliminar</MenuItem>
+                <MenuItem disabled={task.status === 'todo'} onClick={() => handleMenuChangeState('todo')}>Por hacer</MenuItem>
+                <MenuItem disabled={task.status === 'in_progress'} onClick={() => handleMenuChangeState('in_progress')}>En progreso</MenuItem>
+                <MenuItem disabled={task.status === 'completed'} onClick={() => handleMenuChangeState('completed')}>Completado</MenuItem>
+              </Menu>
             </Box>
           ))}
         </Box>

@@ -8,6 +8,7 @@ import DoneIcon from '@mui/icons-material/Done';
 import CheckIcon from '@mui/icons-material/Check';
 import ClearIcon from '@mui/icons-material/Clear';
 import { useAuth } from '../context/AuthContext';
+import { useProject } from '../context/ProjectContext';
 import { db } from '../firebase/config';
 import { collection, query, where, orderBy, limit, onSnapshot, updateDoc, doc } from 'firebase/firestore';
 import { markAsRead, addActivity, deleteActivity } from '../services/activityService';
@@ -15,6 +16,7 @@ import { acceptInvitation } from '../services/invitationService';
 
 export default function NotificationsPanel() {
   const { user } = useAuth();
+  const { currentProject } = useProject();
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const [activities, setActivities] = useState<any[]>([]);
   const prevActivitiesRef = useRef<any[]>([]);
@@ -48,9 +50,10 @@ export default function NotificationsPanel() {
   useEffect(() => {
     if (!user) return;
 
+    const projectId = currentProject?.id || user.uid;
     const qTasks = query(
       collection(db, 'tasks'),
-      where('projectId', '==', user.uid)
+      where('projectId', '==', projectId)
     );
 
     // mantendremos unsubscribers por task
@@ -96,9 +99,10 @@ export default function NotificationsPanel() {
   useEffect(() => {
     if (!user) return;
 
+    const projectId = currentProject?.id || user.uid;
     const qTasks = query(
       collection(db, 'tasks'),
-      where('projectId', '==', user.uid)
+      where('projectId', '==', projectId)
     );
 
     const unsubscribeTasks = onSnapshot(qTasks, (snapshot) => {
@@ -107,8 +111,13 @@ export default function NotificationsPanel() {
       const oneDay = 24 * 60 * 60 * 1000;
 
       tasks.forEach((task: any) => {
+        // Solo procesar tareas que cumplen los criterios: asignada, fecha, y "Por hacer"
+        const isAssignedToUser = Array.isArray(task.assignees) && task.assignees.includes(user.uid);
+        const isInTodoStatus = task.status === 'todo';
+        
         const rawDue = task.dueDate;
-        if (!rawDue) return;
+        if (!rawDue || !isAssignedToUser || !isInTodoStatus) return;
+        
         const due = rawDue.toDate ? rawDue.toDate() : new Date(rawDue);
         const diff = due.getTime() - now.getTime();
 
@@ -123,7 +132,7 @@ export default function NotificationsPanel() {
             console.error('Error creando actividad overdue', err);
           }
         } else if (diff <= oneDay && diff >= 0 && !alreadyHasDueSoon) {
-          // a punto de vencer
+          // a punto de vencer (dentro de 24 horas)
           try {
             addActivity(user.uid, 'due_soon', task.title || 'Tarea', { taskId: task.id });
           } catch (err) {
@@ -320,12 +329,18 @@ export default function NotificationsPanel() {
                       act.action === 'complete_task' ? `Tarea completada: ${act.taskTitle}` :
                       act.action === 'new_comment' ? `Nuevo comentario: ${act.taskTitle}` :
                       act.action === 'project_invitation' ? `Invitación: ${act.taskTitle}` :
+                      act.action === 'due_soon' ? `⏰ Tarea por vencer: ${act.taskTitle}` :
+                      act.action === 'overdue' ? `⚠️ Tarea vencida: ${act.taskTitle}` :
                       act.action}
                     </Typography>
                   }
                   secondary={
                     <>
-                      <Typography component="span" variant="body2" sx={{ display: 'block', whiteSpace: 'normal', wordBreak: 'break-word', color: 'text.primary' }}>{act.taskTitle && act.action === 'new_comment' ? (act.taskTitle) : ''}</Typography>
+                      <Typography component="span" variant="body2" sx={{ display: 'block', whiteSpace: 'normal', wordBreak: 'break-word', color: 'text.primary' }}>
+                        {act.action === 'due_soon' ? 'Esta tarea está asignada a ti y vence próximamente' :
+                        act.action === 'overdue' ? 'Esta tarea está asignada a ti y ya ha vencido' :
+                        act.taskTitle && act.action === 'new_comment' ? (act.taskTitle) : ''}
+                      </Typography>
                       <Typography component="span" variant="caption" sx={{ display: 'block', mt: 0.5 }}>{new Date(act.timestamp?.toDate ? act.timestamp.toDate() : act.timestamp).toLocaleString()}</Typography>
                     </>
                   }

@@ -29,7 +29,7 @@ const translations: Record<LanguageCode, Record<string, any>> = {
     },
     settings: {
       header: 'Configuración',
-      description: 'Personaliza tu cuenta, seguridad y apariencia de Task Core con opciones rápidas, modernas y seguras.',
+      description: '',
       updateProfile: 'Actualizar perfil',
       quickSettings: 'Ajustes rápidos',
       tabs: {

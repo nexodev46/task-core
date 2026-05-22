@@ -1,0 +1,470 @@
+import { useState, useEffect, useRef } from 'react';
+import type { KeyboardEvent } from 'react';
+import {
+  Box, Typography, Paper, TextField, IconButton,
+  Avatar, CircularProgress,
+  Alert, Snackbar, Tooltip,
+  Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Button
+} from '@mui/material';
+import {
+  Send as SendIcon,
+  AttachFile as AttachIcon,
+  Delete as DeleteIcon,
+  EmojiEmotions as EmojiIcon,
+  Mic as MicIcon,
+  Add as AddIcon,
+} from '@mui/icons-material';
+import { useAuth } from '../context/AuthContext';
+import { useProject } from '../context/ProjectContext';
+import { db } from '../firebase/config';
+import {
+  collection,
+  query,
+  where,
+  orderBy,
+  addDoc,
+  onSnapshot,
+  serverTimestamp,
+  deleteDoc,
+  doc,
+  getDoc,
+  updateDoc,
+  arrayUnion,
+  arrayRemove
+} from 'firebase/firestore';
+import { addActivity, markAsRead } from '../services/activityService';
+import { getProjectMembers } from '../services/projectService';
+
+interface Message {
+  id: string;
+  projectId: string;
+  senderId: string;
+  senderName: string;
+  text: string;
+  timestamp: any;
+  read?: boolean;
+  reactions?: Record<string, string[]>;
+}
+
+export default function MessagesPage() {
+  const { user } = useAuth();
+  const { currentProject } = useProject();
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState('');
+  const [messageToDelete, setMessageToDelete] = useState<string | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [userProfiles, setUserProfiles] = useState<Record<string, { avatar?: string; name: string }>>({});
+  const [activeReactionMessageId, setActiveReactionMessageId] = useState<string | null>(null);
+  const [hoverReactionMessageId, setHoverReactionMessageId] = useState<string | null>(null);
+  const [showMoreQuickReplies, setShowMoreQuickReplies] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Suscripción en tiempo real a los mensajes del proyecto actual
+  useEffect(() => {
+    if (!currentProject) return;
+    setLoading(true);
+    const q = query(
+      collection(db, 'messages'),
+      where('projectId', '==', currentProject.id),
+      orderBy('timestamp', 'asc')
+    );
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
+      setMessages(msgs);
+      setLoading(false);
+    }, (err) => {
+      console.error(err);
+      setError('Error al cargar mensajes');
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, [currentProject]);
+
+  // Marcar las notificaciones de mensajes como leídas cuando el usuario entra al chat
+  useEffect(() => {
+    if (!user) return;
+
+    const notificationsQuery = query(
+      collection(db, 'activities'),
+      where('userId', '==', user.uid),
+      where('action', '==', 'new_message'),
+      where('read', '==', false)
+    );
+
+    const unsubscribe = onSnapshot(notificationsQuery, (snapshot) => {
+      snapshot.docs.forEach((activityDoc) => {
+        markAsRead(activityDoc.id).catch((err) => console.error('Error marcando mensaje como leído:', err));
+      });
+    });
+
+    return unsubscribe;
+  }, [user]);
+
+  // Auto-scroll al final cuando llegan nuevos mensajes
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  useEffect(() => {
+    if (!messages.length) return;
+
+    const fetchProfiles = async () => {
+      const uniqueIds = Array.from(new Set(messages.map((msg) => msg.senderId)));
+      const profiles: Record<string, { avatar?: string; name: string }> = {};
+
+      await Promise.all(uniqueIds.map(async (uid) => {
+        if (userProfiles[uid]) return;
+
+        try {
+          const userRef = doc(db, 'users', uid);
+          const userSnap = await getDoc(userRef);
+          if (userSnap.exists()) {
+            const data = userSnap.data();
+            profiles[uid] = {
+              avatar: data.avatarBase64 || data.photoURL,
+              name: data.fullName || data.displayName || ''
+            };
+            return;
+          }
+
+          const profileRef = doc(db, 'profiles', uid);
+          const profileSnap = await getDoc(profileRef);
+          if (profileSnap.exists()) {
+            const data = profileSnap.data();
+            profiles[uid] = {
+              avatar: data.avatarBase64 || data.photoURL,
+              name: data.fullName || data.displayName || ''
+            };
+          }
+        } catch (err) {
+          console.error('Error cargando perfil de mensaje:', err);
+        }
+      }));
+
+      if (Object.keys(profiles).length > 0) {
+        setUserProfiles((prev) => ({ ...prev, ...profiles }));
+      }
+    };
+
+    fetchProfiles();
+  }, [messages, userProfiles]);
+
+  const handleSendMessage = async () => {
+    if (!newMessage.trim() || !currentProject || !user) return;
+    setSending(true);
+    try {
+      const docRef = await addDoc(collection(db, 'messages'), {
+        projectId: currentProject.id,
+        senderId: user.uid,
+        senderName: user.displayName || user.email?.split('@')[0] || 'Anónimo',
+        text: newMessage.trim(),
+        timestamp: serverTimestamp(),
+        read: false,
+        reactions: {}
+      });
+
+      const members = await getProjectMembers(currentProject.id);
+      const recipients = members
+        .map((member) => member.userId)
+        .filter((recipientId) => recipientId !== user.uid);
+
+      await Promise.all(
+        recipients.map((recipientId) =>
+          addActivity(recipientId, 'new_message', currentProject.name, {
+            projectId: currentProject.id,
+            messageId: docRef.id
+          })
+        )
+      );
+
+      setNewMessage('');
+    } catch (err) {
+      console.error(err);
+      setError('No se pudo enviar el mensaje');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleRequestDeleteMessage = (messageId: string) => {
+    setMessageToDelete(messageId);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleCancelDelete = () => {
+    setMessageToDelete(null);
+    setDeleteDialogOpen(false);
+  };
+
+  const reactionOptions = [
+    { key: 'like', emoji: '👍' },
+    { key: 'love', emoji: '❤️' },
+    { key: 'smile', emoji: '😄' }
+  ];
+
+  const handleToggleReaction = async (message: Message, reaction: string) => {
+    if (!user?.uid || !message.id) return;
+    const messageRef = doc(db, 'messages', message.id);
+    const userId = user.uid;
+    const existing = message.reactions?.[reaction] || [];
+    const hasReacted = existing.includes(userId);
+    const updates: Record<string, any> = {};
+
+    if (hasReacted) {
+      updates[`reactions.${reaction}`] = arrayRemove(userId);
+    } else {
+      updates[`reactions.${reaction}`] = arrayUnion(userId);
+      reactionOptions.forEach((option) => {
+        if (option.key !== reaction) {
+          const other = message.reactions?.[option.key] || [];
+          if (other.includes(userId)) {
+            updates[`reactions.${option.key}`] = arrayRemove(userId);
+          }
+        }
+      });
+    }
+
+    try {
+      await updateDoc(messageRef, updates);
+    } catch (err) {
+      console.error('Error al reaccionar al mensaje:', err);
+    }
+  };
+
+  const handleDeleteMessage = async () => {
+    if (!messageToDelete) return;
+    setDeleteDialogOpen(false);
+    try {
+      await deleteDoc(doc(db, 'messages', messageToDelete));
+      setMessageToDelete(null);
+    } catch (err) {
+      console.error(err);
+      setError('No se pudo eliminar el mensaje');
+    }
+  };
+
+  const quickReplies = ['HOLA', 'COMO VAN', 'GENIAL'];
+  const moreQuickReplies = ['Gracias', 'Perfecto', '¿Listo ya?'];
+
+  const handleQuickReply = (reply: string) => {
+    setNewMessage(reply);
+  };
+
+  const handleToggleMoreQuickReplies = () => {
+    setShowMoreQuickReplies((prev) => !prev);
+  };
+
+  const getDayLabel = (date: Date) => {
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+
+    if (date.toDateString() === today.toDateString()) return 'Hoy';
+    if (date.toDateString() === yesterday.toDateString()) return 'Ayer';
+    return new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'long', year: 'numeric' }).format(date);
+  };
+
+  const isSameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  };
+
+  const formatTimestamp = (timestamp: any) => {
+    if (!timestamp) return '';
+    const date = typeof timestamp?.toDate === 'function' ? timestamp.toDate() : new Date(timestamp);
+    return new Intl.DateTimeFormat('es-ES', {
+      day: '2-digit',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit'
+    }).format(date);
+  };
+
+  const getInitial = (name: string) => name.trim().charAt(0).toUpperCase();
+
+  if (!currentProject) {
+    return (
+      <Box sx={{ p: 4, textAlign: 'center' }}>
+        <Typography variant="h5">Selecciona un proyecto para ver sus mensajes</Typography>
+      </Box>
+    );
+  }
+
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 120px)', p: 2 }}>
+      {/* Cabecera */}
+      <Paper elevation={2} sx={{ p: 3, mb: 2, borderRadius: 3, bgcolor: '#4564a5', color: 'common.white' }}>
+        <Typography variant="h5" sx={{ mb: 1, fontWeight: '700' }}>
+          {currentProject.name}
+        </Typography>
+        <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.92)' }}>
+          Chat colaborativo en tiempo real · {messages.length} mensajes
+        </Typography>
+      </Paper>
+
+      {/* Área de mensajes */}
+      <Paper sx={{ flexGrow: 1, overflow: 'hidden', borderRadius: 3, mb: 2, bgcolor: '#e5e7eb', display: 'flex', flexDirection: 'column' }}>
+        {loading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', p: 4 }}>
+            <CircularProgress />
+          </Box>
+        ) : messages.length === 0 ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', p: 4 }}>
+            <Typography variant="body1" color="textSecondary">No hay mensajes aún. ¡Envía el primero!</Typography>
+          </Box>
+        ) : (
+          <Box sx={{
+            flexGrow: 1,
+            overflowY: 'auto',
+            p: 3,
+            '&::-webkit-scrollbar': {
+              width: '8px'
+            },
+            '&::-webkit-scrollbar-thumb': {
+              bgcolor: 'rgba(15,23,42,0.18)',
+              borderRadius: 4
+            },
+            '&::-webkit-scrollbar-track': {
+              bgcolor: 'transparent'
+            }
+          }}>
+            {messages.map((msg, idx) => {
+              const isOwn = msg.senderId === user?.uid;
+              const previousSender = idx > 0 ? messages[idx - 1].senderId : null;
+              const isSystem = msg.senderId === 'system' || (msg.senderName || '').toLowerCase().includes('sistema');
+              const showAvatar = !isSystem && (idx === 0 || msg.senderId !== previousSender);
+              const alignRight = isSystem ? 'center' : isOwn ? 'flex-end' : 'flex-start';
+              const timestamp = formatTimestamp(msg.timestamp);
+
+              return (
+                <Box key={msg.id} sx={{ width: '100%' }}>
+                  {/* fecha */}
+                  {(!idx || (idx > 0 && !isSameDay(typeof messages[idx - 1].timestamp?.toDate === 'function' ? messages[idx - 1].timestamp.toDate() : new Date(messages[idx - 1].timestamp), typeof msg.timestamp?.toDate === 'function' ? msg.timestamp.toDate() : new Date(msg.timestamp)))) && (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', my: 1.5 }}>
+                      <Box sx={{ px: 2.5, py: 0.5, borderRadius: 99, bgcolor: '#e2e8f0', color: '#475569', fontSize: '0.75rem', fontWeight: 600 }}>
+                        {getDayLabel(typeof msg.timestamp?.toDate === 'function' ? msg.timestamp.toDate() : new Date(msg.timestamp))}
+                      </Box>
+                    </Box>
+                  )}
+
+                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: alignRight, mb: showAvatar ? 0.6 : 0.2 }}>
+                    {showAvatar && (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, mb: 0.12, width: '100%', justifyContent: alignRight }}>
+                        {!isOwn && (
+                          <Avatar src={userProfiles[msg.senderId]?.avatar || undefined} sx={{ width: 34, height: 34 }}>
+                            {!userProfiles[msg.senderId]?.avatar && (msg.senderName || '').charAt(0).toUpperCase()}
+                          </Avatar>
+                        )}
+                        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: isOwn ? 'flex-end' : 'flex-start' }}>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>{msg.senderName}</Typography>
+                          <Typography variant="caption" color="textSecondary">{timestamp}</Typography>
+                        </Box>
+                        {isOwn && (
+                          <Avatar src={user?.photoURL || undefined} sx={{ width: 34, height: 34 }}>
+                            {!user?.photoURL && (user?.displayName || '').charAt(0).toUpperCase()}
+                          </Avatar>
+                        )}
+                      </Box>
+                    )}
+
+                    <Box sx={{ maxWidth: '78%', px: 2.2, py: 1.4, borderRadius: 3, bgcolor: isOwn ? '#6366f1' : '#f1f5f9', color: isOwn ? '#fff' : '#1e293b' }}>
+                      <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{msg.text}</Typography>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
+                        <Typography component="span" sx={{ fontSize: '0.72rem' }}>{timestamp}</Typography>
+                        {isOwn && <Typography component="span" sx={{ fontSize: '0.72rem' }}>{msg.read ? '✓✓' : '✓'}</Typography>}
+                      </Box>
+                    </Box>
+
+                    <Box sx={{ display: 'flex', gap: 0.5, mt: 0.3 }}>
+                      {reactionOptions.map((option) => {
+                        const users = msg.reactions?.[option.key] || [];
+                        return (
+                          <Button key={option.key} size="small" onClick={(e) => { e.stopPropagation(); handleToggleReaction(msg as any, option.key); }} sx={{ textTransform: 'none' }}>
+                            <Box component="span" sx={{ mr: 0.4 }}>{option.emoji}</Box>
+                            {users.length > 0 && <Box component="span" sx={{ fontSize: '0.75rem', fontWeight: 600 }}>{users.length}</Box>}
+                          </Button>
+                        );
+                      })}
+                    </Box>
+                  </Box>
+                </Box>
+              );
+            })}
+            <div ref={messagesEndRef} />
+          </Box>
+        )}
+      </Paper>
+
+      {/* Input de mensajes */}
+      <Paper elevation={3} sx={{ p: 2, borderRadius: 3, bgcolor: '#ffffff' }}>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2, alignItems: 'center' }}>
+          {quickReplies.map((reply) => (
+            <Button
+              key={reply}
+              size="small"
+              variant="outlined"
+              onClick={() => handleQuickReply(reply)}
+              sx={{
+                textTransform: 'none',
+                borderRadius: 20,
+                px: 1.75,
+                py: 0.65,
+                bgcolor: '#eef2ff',
+                color: '#1e3a8a',
+                borderColor: 'transparent',
+                '&:hover': {
+                  bgcolor: '#e0e7ff'
+                }
+              }}
+            >
+              {reply}
+            </Button>
+          ))}
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={handleToggleMoreQuickReplies}
+            sx={{
+              textTransform: 'none',
+              borderRadius: 20,
+              px: 1.75,
+              py: 0.65,
+              bgcolor: '#f8fafc',
+              color: '#475569',
+              borderColor: '#cbd5e1'
+            }}
+          >
+            <AddIcon sx={{ mr: 0.5, fontSize: '1rem' }} />
+            Más
+          </Button>
+          {showMoreQuickReplies && moreQuickReplies.map((reply) => (
+            <Button
+              key={reply}
+              size="small"
+              variant="outlined"
+              onClick={() => handleQuickReply(reply)}
+              sx={{
+                textTransform: 'none',
+                borderRadius: 20,
+                px: 1.75,
+                py: 0.65,
+                bgcolor: '#eef2ff',
+                color: '#1e3a8a',
+                borderColor: 'transparent',
+                '&:hover': {
+                  bgcolor: '#e0e7ff'
+                }
+              }}
+            >
+              {reply}
+            </Button>
+          ))}
+        </Box>
+

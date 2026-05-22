@@ -1,5 +1,8 @@
-import { useState, useEffect, useRef, type DragEvent } from 'react';
-import { Paper, Typography, Button, TextField, Dialog, DialogTitle, DialogContent, DialogActions, Chip, Box } from '@mui/material';
+import { useState, useEffect, useRef } from 'react';
+import { Paper, Typography, Button, TextField, Dialog, DialogTitle, DialogContent, DialogActions, Chip, Box, Select, MenuItem } from '@mui/material';
+import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
+import CommentIcon from '@mui/icons-material/Comment';
+import LabelImportantIcon from '@mui/icons-material/LabelImportant';
 import { useSearch } from '../context/SearchContext';
 import { useAuth } from '../context/AuthContext';
 import { useProject } from '../context/ProjectContext';
@@ -132,7 +135,7 @@ export default function KanbanBoard() {
     setNewTag('');
   };
 
-  const handleDragStart = (e: DragEvent<HTMLDivElement>, taskId: string) => {
+  const handleDragStart = (e: any, taskId: string) => {
     e.dataTransfer.setData('taskId', taskId);
     dragTaskId.current = taskId;
     dropCompleted.current = false;
@@ -159,7 +162,7 @@ export default function KanbanBoard() {
     }
   };
 
-  const handleDrop = async (e: DragEvent<HTMLDivElement>, targetStatusSpanish: StatusLabel) => {
+  const handleDrop = async (e: any, targetStatusSpanish: StatusLabel) => {
     e.preventDefault();
     e.stopPropagation();
     dropCompleted.current = true;
@@ -182,7 +185,7 @@ export default function KanbanBoard() {
     }
   };
 
-  const handleDropOutside = async (e: DragEvent<HTMLDivElement>) => {
+  const handleDropOutside = async (e: any) => {
     e.preventDefault();
     dropCompleted.current = true;
     const taskId = e.dataTransfer.getData('taskId');
@@ -199,7 +202,7 @@ export default function KanbanBoard() {
     }
   };
 
-  const handleDragOver = (e: DragEvent<HTMLDivElement>) => e.preventDefault();
+  const handleDragOver = (e: any) => e.preventDefault();
 
   if (loading && firstLoad) return <Typography align="center">Cargando tareas...</Typography>;
 
@@ -222,19 +225,45 @@ export default function KanbanBoard() {
     'Completado': filteredTasks.filter(t => normalizeStatusLabel(t.status) === 'Completado')
   };
 
+  const columnColors: Record<StatusLabel, string> = {
+    'Por hacer': '#ffedd5',   // tono naranja muy suave
+    'En progreso': '#dbeafe', // tono azul muy suave
+    'Completado': '#dcfce7'   // tono verde muy suave
+  };
+
+  const tagPalette = [
+    { bg: '#eef2ff', color: '#1e3a8a', border: '#c7d2fe' },
+    { bg: '#fef3c7', color: '#92400e', border: '#fde68a' },
+    { bg: '#ecfccb', color: '#365314', border: '#d9f99d' },
+    { bg: '#ede9fe', color: '#5b21b6', border: '#c4b5fd' },
+    { bg: '#fde8e8', color: '#981b1b', border: '#fecaca' },
+    { bg: '#e0f2fe', color: '#0369a1', border: '#bae6fd' },
+    { bg: '#f5f3ff', color: '#5b21b6', border: '#ddd6fe' },
+    { bg: '#f0fdf4', color: '#166534', border: '#bbf7d0' },
+    { bg: '#fff7ed', color: '#9a3412', border: '#fdba74' },
+    { bg: '#f8fafc', color: '#334155', border: '#cbd5e1' }
+  ];
+
+  const getTagStyle = (tag: string) => {
+    const normalized = tag.trim().toLowerCase();
+    if (!normalized) return tagPalette[0];
+    let hash = 0;
+    for (let i = 0; i < normalized.length; i += 1) {
+      hash = (hash * 31 + normalized.charCodeAt(i)) % tagPalette.length;
+    }
+    return tagPalette[hash];
+  };
+
   return (
     <Box onDrop={handleDropOutside} onDragOver={handleDragOver}>
       <Box sx={{ display: 'grid', gap: 3, gridTemplateColumns: { xs: '1fr', md: 'repeat(3, minmax(280px, 1fr))' }, alignItems: 'start' }}>
         {Object.entries(grouped).map(([status, taskList]) => (
           <Box
             key={status}
-            onDrop={(e) => {
-              e.stopPropagation();
-              handleDrop(e, status as StatusLabel);
-            }}
+            onDrop={(e) => handleDrop(e, status as StatusLabel)}
             onDragOver={handleDragOver}
           >
-            <Paper sx={{ p: 2.5, bgcolor: '#f9fafb', borderRadius: 3, minHeight: 520, display: 'flex', flexDirection: 'column' }}>
+            <Paper sx={{ p: 2.5, bgcolor: columnColors[status as StatusLabel] || '#f5f5f5', borderRadius: 2, minHeight: 520, display: 'flex', flexDirection: 'column', borderLeft: `6px solid ${columnColors[status as StatusLabel] || '#f5f5f5'}` }}>
               <Typography variant="h6" align="center" gutterBottom>{status}</Typography>
               {taskList.map((task) => (
                 <Paper
@@ -242,21 +271,40 @@ export default function KanbanBoard() {
                   draggable
                   onDragStart={(e) => handleDragStart(e, task.id)}
                   onDragEnd={handleDragEnd}
-                  sx={{ p: 2, mb: 2, cursor: 'grab' }}
+                  sx={{
+                    p: 2.5,
+                    mb: 2,
+                    cursor: 'grab',
+                    borderRadius: 3,
+                    boxShadow: '0 14px 30px rgba(15, 23, 42, 0.08)',
+                    transition: 'transform 200ms ease, box-shadow 200ms ease',
+                    '&:hover': {
+                      transform: 'translateY(-4px)',
+                      boxShadow: '0 22px 45px rgba(15, 23, 42, 0.16)',
+                    },
+                  }}
                 >
-                  <Typography
-                    variant="subtitle1"
-                    sx={{
-                      fontWeight: 'bold',
-                      wordBreak: 'break-word',
-                      overflowWrap: 'anywhere',
-                      fontSize: '1.05rem',
-                      lineHeight: 1.15,
-                      mb: 0.5,
-                    }}
-                  >
-                    {task.title}
-                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                    <Typography
+                      variant="subtitle1"
+                      sx={{
+                        fontWeight: 'bold',
+                        wordBreak: 'break-word',
+                        overflowWrap: 'anywhere',
+                        fontSize: '1.05rem',
+                        lineHeight: 1.2,
+                      }}
+                    >
+                      {task.title}
+                    </Typography>
+                    <Chip
+                      icon={<LabelImportantIcon fontSize="small" />}
+                      label={normalizeStatusLabel(task.status)}
+                      size="small"
+                      variant="outlined"
+                      sx={{ textTransform: 'none', fontWeight: 600, borderColor: 'divider' }}
+                    />
+                  </Box>
                   <Typography
                     variant="body2"
                     sx={{
@@ -264,28 +312,64 @@ export default function KanbanBoard() {
                       overflowWrap: 'anywhere',
                       whiteSpace: 'normal',
                       fontSize: '0.95rem',
-                      lineHeight: 1.3,
+                      lineHeight: 1.6,
                       color: 'text.secondary',
+                      mb: 1.5,
                     }}
                   >
                     {task.description}
                   </Typography>
                   <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', my: 1 }}>
-                    {task.tags?.map((tag: string) => (
-                      <Typography key={tag} variant="caption" sx={{ bgcolor: '#e0e0e0', px: 1, borderRadius: 1 }}>
-                        {tag}
-                      </Typography>
-                    ))}
+                    {task.tags?.map((tag: string) => {
+                      const style = getTagStyle(tag);
+                      return (
+                        <Chip
+                          key={tag}
+                          label={tag}
+                          size="small"
+                          variant="outlined"
+                          sx={{
+                            backgroundColor: style.bg,
+                            color: style.color,
+                            borderColor: style.border,
+                            textTransform: 'none',
+                          }}
+                        />
+                      );
+                    })}
                   </Box>
-                  {task.dueDate && (
-                    <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', mb: 0.5 }}>
-                      Vence: {new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }).format(task.dueDate)}
-                    </Typography>
-                  )}
-                  <Typography variant="caption">{task.commentsCount || 0} Comentarios</Typography>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1, mt: 2, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'text.secondary' }}>
+                      <CalendarTodayIcon fontSize="small" />
+                      <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                        {task.dueDate
+                          ? new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }).format(task.dueDate)
+                          : 'Sin fecha'}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'text.secondary' }}>
+                      <CommentIcon fontSize="small" />
+                      <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                        {task.commentsCount || 0} comentarios
+                      </Typography>
+                    </Box>
+                  </Box>
                 </Paper>
               ))}
-              <Button fullWidth variant="text" onClick={() => setOpen(true)} sx={{ mt: 1, color: 'primary.main', textTransform: 'none' }}>
+              <Button
+                fullWidth
+                variant="contained"
+                onClick={() => setOpen(true)}
+                sx={{
+                  mt: 1,
+                  backgroundColor: '#eef3ff',
+                  color: '#1f2937',
+                  textTransform: 'none',
+                  '&:hover': {
+                    backgroundColor: '#dbeafe',
+                  },
+                }}
+              >
                 + Añadir tarjeta
               </Button>
             </Paper>
@@ -296,17 +380,16 @@ export default function KanbanBoard() {
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Nueva Tarea</DialogTitle>
         <DialogContent>
-          <TextField
-            select
+          <Select
             label="Columna"
             fullWidth
-            margin="dense"
             value={newTask.status}
-            onChange={(e) => setNewTask({ ...newTask, status: e.target.value as StatusLabel })}
-            slotProps={{ select: { native: true } }}
+            onChange={(e) => setNewTask({ ...newTask, status: (e.target.value as StatusLabel) })}
+            margin="dense"
+            sx={{ mb: 1 }}
           >
-            {Object.keys(grouped).map(s => <option key={s} value={s}>{s}</option>)}
-          </TextField>
+            {Object.keys(grouped).map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}
+          </Select>
           <TextField
             label="Título"
             fullWidth
@@ -327,7 +410,21 @@ export default function KanbanBoard() {
             <Typography variant="subtitle2">Etiquetas</Typography>
             <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
               <TextField size="small" label="Nueva etiqueta" value={newTag} onChange={(e) => setNewTag(e.target.value)} />
-              <Button onClick={addTag} variant="outlined">Agregar</Button>
+              <Button
+                onClick={addTag}
+                variant="contained"
+                sx={{
+                  backgroundColor: '#f0f9ff',
+                  color: '#1d4ed8',
+                  textTransform: 'none',
+                  border: '1px solid #dbeafe',
+                  '&:hover': {
+                    backgroundColor: '#dbeafe',
+                  },
+                }}
+              >
+                Agregar
+              </Button>
             </Box>
             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 1 }}>
               {newTask.tags.map(tag => (
