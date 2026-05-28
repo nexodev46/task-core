@@ -125,7 +125,7 @@ export default function DashboardLayout() {
                 Task Core
               </Typography>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontSize: '0.7rem', mt: 0.15 }}>
-                V1.2.0
+                V1.2.1
               </Typography>
             </Box>
           </Box>

@@ -19,6 +19,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useProject } from '../context/ProjectContext';
 import { db } from '../firebase/config';
+import { parseDateInput } from '../utils/dateUtils';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 
 type TaskStatus = 'todo' | 'in_progress' | 'completed';
@@ -184,14 +185,15 @@ export default function TasksPage() {
     if (!formData.title.trim()) return;
     try {
       if (editingTask) {
+        const dueDate = formData.dueDate ? parseDateInput(formData.dueDate) : null;
         await updateDoc(doc(db, 'tasks', editingTask.id), {
           title: formData.title,
           description: formData.description,
           status: formData.status,
-          dueDate: formData.dueDate ? new Date(formData.dueDate) : null,
+          dueDate,
           updatedAt: new Date()
         });
-        setTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, ...formData, dueDate: formData.dueDate ? new Date(formData.dueDate) : undefined } : t));
+        setTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, ...formData, dueDate: dueDate || undefined } : t));
       } else {
         const newTask = {
           title: formData.title,
@@ -200,7 +202,7 @@ export default function TasksPage() {
           projectId: currentProject?.id,
           createdBy: user?.uid,
           createdAt: new Date(),
-          dueDate: formData.dueDate ? new Date(formData.dueDate) : null,
+          dueDate: formData.dueDate ? parseDateInput(formData.dueDate) : null,
           commentsCount: 0,
           tags: []
         };
@@ -333,7 +335,10 @@ export default function TasksPage() {
                     {task.dueDate && (
                       <Chip
                         icon={<ScheduleIcon fontSize="small" />}
-                        label={`Vence ${task.dueDate.toLocaleDateString()}`}
+                        label={task.status === 'completed' ? 'Finalizada' : `Vence ${(() => {
+                          const dueDate = task.dueDate instanceof Date ? task.dueDate : parseDateInput(task.dueDate as any);
+                          return dueDate ? dueDate.toLocaleDateString() : 'Sin fecha';
+                        })()}`}
                         size="small"
                         variant="outlined"
                         sx={{ borderColor: '#cfd8dc', color: 'text.secondary' }}

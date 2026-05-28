@@ -5,8 +5,10 @@ import { useProject } from '../context/ProjectContext';
 import { Grid, Paper, Typography, Button, TextField, Dialog, DialogTitle, DialogContent, DialogActions, Chip, Box } from '@mui/material';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import CommentIcon from '@mui/icons-material/Comment';
+import { parseDateInput } from '../utils/dateUtils';
 import LabelImportantIcon from '@mui/icons-material/LabelImportant';
 import { subscribeToTasks, createTask, updateTask } from '../services/taskService';
+import CoreAI from './CoreAI';
 
 type StatusLabel = 'Por hacer' | 'En progreso' | 'Completado';
 
@@ -226,7 +228,10 @@ export default function KanbanBoard() {
                       <CalendarTodayIcon fontSize="small" />
                       <Typography variant="caption" sx={{ ml: 0.25 }}>
                         {task.dueDate
-                          ? new Date(task.dueDate).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })
+                          ? (() => {
+                              const dueDate = task.dueDate instanceof Date ? task.dueDate : parseDateInput(task.dueDate);
+                              return dueDate ? dueDate.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Sin fecha';
+                            })()
                           : 'Sin fecha'}
                       </Typography>
                     </Box>
@@ -239,7 +244,7 @@ export default function KanbanBoard() {
                   </Box>
                 </Paper>
               ))}
-              <Button fullWidth variant="text" onClick={() => setOpen(true)} sx={{ mt: 1, color: 'primary.main', textTransform: 'none' }}>
+              <Button fullWidth variant="text" onClick={(e) => { e.currentTarget.blur(); setOpen(true); }} sx={{ mt: 1, color: 'primary.main', textTransform: 'none' }}>
                 + Añadir tarjeta
               </Button>
             </Paper>
@@ -253,7 +258,7 @@ export default function KanbanBoard() {
           <TextField select label="Columna" fullWidth margin="dense" value={newTask.status} onChange={e => setNewTask({...newTask, status: (e.target.value as StatusLabel)})} slotProps={{ select: { native: true } }}>
             {Object.keys(tasks).map(s => <option key={s} value={s}>{s}</option>)}
           </TextField>
-          <TextField label="Título" fullWidth margin="dense" value={newTask.title} onChange={e => setNewTask({...newTask, title: e.target.value})} />
+          <TextField autoFocus label="Título" fullWidth margin="dense" value={newTask.title} onChange={e => setNewTask({...newTask, title: e.target.value})} />
           <TextField label="Descripción" fullWidth multiline rows={3} margin="dense" value={newTask.description} onChange={e => setNewTask({...newTask, description: e.target.value})} />
           <Box sx={{ mt: 2 }}>
             <Typography variant="subtitle2">Etiquetas</Typography>
@@ -271,6 +276,8 @@ export default function KanbanBoard() {
           <Button onClick={handleAddTask} variant="contained">Crear</Button>
         </DialogActions>
       </Dialog>
+      {/* Core AI assistant (non-destructive): floating button + sidebar */}
+      <CoreAI items={itemsList} projectId={projectId} />
     </Box>
   );
 }

@@ -37,6 +37,10 @@ export default function Login() {
     localStorage.setItem('taskCoreLoginBackgroundIndex', nextIndex.toString());
   }, []);
 
+  const handleFieldFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    e.target.setAttribute('autocomplete', 'off');
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -128,9 +132,25 @@ export default function Login() {
             </Typography>
           </Box>
 
-          <Box component="form" onSubmit={handleLogin} sx={{ width: '100%', maxWidth: 420, mx: 'auto' }}>
+          <Box component="form" onSubmit={handleLogin} autoComplete="off" noValidate sx={{ width: '100%', maxWidth: 420, mx: 'auto' }}>
+            {/* Hidden inputs to prevent browser autofill from filling visible fields */}
+            <input
+              type="text"
+              name="username_autofill"
+              autoComplete="username"
+              style={{ position: 'absolute', left: -9999, top: 0, width: 0, height: 0, opacity: 0 }}
+              aria-hidden="true"
+            />
+            <input
+              type="password"
+              name="password_autofill"
+              autoComplete="current-password"
+              style={{ position: 'absolute', left: -9999, top: 0, width: 0, height: 0, opacity: 0 }}
+              aria-hidden="true"
+            />
             <TextField
               label="Email"
+              placeholder="Ingrese su correo"
               type="email"
               fullWidth
               margin="normal"
@@ -139,46 +159,44 @@ export default function Login() {
                 const v = e.target.value; setEmail(v);
                 setEmailError(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? '' : 'Formato de correo inválido');
               }}
+              onFocus={handleFieldFocus}
               required
               variant="outlined"
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <EmailIcon color="action" />
-                  </InputAdornment>
-                )
-              }}
+              autoComplete="off"
+              // removed adornment to avoid TS prop mismatch
               helperText={emailError}
               error={!!emailError}
-              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1 } }}
+              sx={{
+                '& .MuiOutlinedInput-root': { borderRadius: 1 },
+                '& input:-webkit-autofill': {
+                  WebkitBoxShadow: '0 0 0 1000px white inset !important',
+                  WebkitTextFillColor: '#333 !important'
+                }
+              }}
             />
 
             <TextField
               label="Password"
+              placeholder="Ingrese su contraseña"
               type={showPassword ? 'text' : 'password'}
               fullWidth
               margin="normal"
               value={password}
               onChange={(e) => { const v = e.target.value; setPassword(v); setPasswordError(v.length >= 6 ? '' : 'La contraseña debe tener al menos 6 caracteres'); }}
+              onFocus={handleFieldFocus}
               required
               variant="outlined"
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <LockIcon color="action" />
-                  </InputAdornment>
-                ),
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton onClick={() => setShowPassword(!showPassword)} edge="end">
-                      {showPassword ? <VisibilityOff /> : <Visibility />}
-                    </IconButton>
-                  </InputAdornment>
-                )
-              }}
+              autoComplete="off"
+              // removed adornment to avoid TS prop mismatch; keep simple field
               helperText={passwordError}
               error={!!passwordError}
-              sx={{ '& .MuiOutlinedInput-root': { borderRadius: '8px' } }}
+              sx={{
+                '& .MuiOutlinedInput-root': { borderRadius: '8px' },
+                '& input:-webkit-autofill': {
+                  WebkitBoxShadow: '0 0 0 1000px white inset !important',
+                  WebkitTextFillColor: '#333 !important'
+                }
+              }}
             />
 
             {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}

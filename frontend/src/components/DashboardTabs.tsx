@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { parseDateInput } from '../utils/dateUtils';
 import { Paper, Typography, Button, TextField, Dialog, DialogTitle, DialogContent, DialogActions, Chip, Box, Select, MenuItem } from '@mui/material';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import CommentIcon from '@mui/icons-material/Comment';
@@ -9,6 +10,7 @@ import { useProject } from '../context/ProjectContext';
 import { db } from '../firebase/config';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { createTask, updateTask, deleteTask } from '../services/taskService';
+import CoreAI from './CoreAI';
 type StatusKey = 'todo' | 'in_progress' | 'completed';
 type StatusLabel = 'Por hacer' | 'En progreso' | 'Completado';
 
@@ -73,7 +75,7 @@ export default function KanbanBoard() {
               status: data.status as StatusKey,
               tags: (data.tags || []) as string[],
               commentsCount: data.commentsCount || 0,
-              dueDate: data.dueDate ? (data.dueDate.toDate ? data.dueDate.toDate() : new Date(data.dueDate)) : null,
+              dueDate: data.dueDate ? (data.dueDate.toDate ? data.dueDate.toDate() : parseDateInput(data.dueDate)) : null,
             });
           }
           return map;
@@ -359,7 +361,7 @@ export default function KanbanBoard() {
               <Button
                 fullWidth
                 variant="contained"
-                onClick={() => setOpen(true)}
+                onClick={(e) => { e.currentTarget.blur(); setOpen(true); }}
                 sx={{
                   mt: 1,
                   backgroundColor: '#eef3ff',
@@ -383,6 +385,7 @@ export default function KanbanBoard() {
           <Select
             label="Columna"
             fullWidth
+            autoFocus
             value={newTask.status}
             onChange={(e) => setNewTask({ ...newTask, status: (e.target.value as StatusLabel) })}
             margin="dense"
@@ -438,6 +441,12 @@ export default function KanbanBoard() {
           <Button onClick={handleAddTask} variant="contained">Crear</Button>
         </DialogActions>
       </Dialog>
+      <CoreAI
+        items={tasks}
+        projectId={currentProject?.id || user?.uid || 'anonimo'}
+        projectName={currentProject?.name}
+        userName={user?.displayName || user?.email?.split('@')[0] || undefined}
+      />
     </Box>
   );
 }

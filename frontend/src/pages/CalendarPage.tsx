@@ -29,6 +29,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useProject } from '../context/ProjectContext';
 import { db } from '../firebase/config';
+import { parseDateInput } from '../utils/dateUtils';
 import { collection, query, where, onSnapshot, updateDoc, addDoc, deleteDoc, doc } from 'firebase/firestore';
 
 interface TaskItem {
@@ -231,7 +232,7 @@ export default function CalendarPage() {
     if (!user || !taskForm.title.trim()) return;
     setSaving(true);
     try {
-      const dueDate = taskForm.dueDate ? new Date(taskForm.dueDate) : null;
+      const dueDate = taskForm.dueDate ? parseDateInput(taskForm.dueDate) : null;
       const payload = {
         title: taskForm.title,
         description: taskForm.description,
@@ -546,7 +547,7 @@ export default function CalendarPage() {
                       {task.dueDate && (
                         <Chip
                           icon={<CalendarTodayIcon fontSize="small" />}
-                          label={`Vence ${task.dueDate.toLocaleDateString()}`}
+                          label={task.status === 'completed' ? 'Finalizada' : `Vence ${task.dueDate.toLocaleDateString()}`}
                           size="small"
                           sx={{ borderColor: '#cfd8dc', color: 'text.secondary' }}
                         />
@@ -578,7 +579,7 @@ export default function CalendarPage() {
             {selectedTask?.dueDate && (
               <Chip
                 icon={<CalendarTodayIcon fontSize="small" />}
-                label={`Vence ${selectedTask.dueDate.toLocaleDateString()}`}
+                label={selectedTask?.status === 'completed' ? 'Finalizada' : `Vence ${selectedTask.dueDate.toLocaleDateString()}`}
                 size="small"
                 sx={{ borderColor: '#cfd8dc', color: 'text.secondary' }}
               />

@@ -40,6 +40,10 @@ export default function Register() {
     localStorage.setItem('taskCoreRegisterBackgroundIndex', nextIndex.toString());
   }, []);
 
+  const handleFieldFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    e.target.setAttribute('autocomplete', 'off');
+  };
+
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -114,7 +118,22 @@ export default function Register() {
               
             </Typography>
           </Box>
-          <Box component="form" onSubmit={handleRegister} sx={{ width: '100%', maxWidth: 420, mx: 'auto' }}>
+          <Box component="form" onSubmit={handleRegister} autoComplete="off" noValidate sx={{ width: '100%', maxWidth: 420, mx: 'auto' }}>
+            {/* Hidden inputs to prevent browser autofill from filling visible fields */}
+            <input
+              type="text"
+              name="username_autofill"
+              autoComplete="username"
+              style={{ position: 'absolute', left: -9999, top: 0, width: 0, height: 0, opacity: 0 }}
+              aria-hidden="true"
+            />
+            <input
+              type="password"
+              name="password_autofill"
+              autoComplete="new-password"
+              style={{ position: 'absolute', left: -9999, top: 0, width: 0, height: 0, opacity: 0 }}
+              aria-hidden="true"
+            />
             <TextField
               label="Nombre"
               fullWidth
@@ -127,34 +146,61 @@ export default function Register() {
             />
             <TextField
               label="Email"
+              placeholder="Ingrese su correo"
               type="email"
               fullWidth
               margin="normal"
               value={email}
               onChange={(e) => { const v = e.target.value; setEmail(v); setEmailError(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? '' : 'Formato de correo inválido'); }}
+              onFocus={handleFieldFocus}
               required
               variant="outlined"
-              InputProps={{ startAdornment: (<InputAdornment position="start"><EmailIcon color="action" /></InputAdornment>) }}
+              autoComplete="off"
+              slotProps={{ input: { name: "field-email-reg", startAdornment: (<InputAdornment position="start"><EmailIcon color="action" /></InputAdornment>) } }}
               helperText={emailError}
               error={!!emailError}
-              sx={{ '& .MuiOutlinedInput-root': { borderRadius: '8px' } }}
+              sx={{
+                '& .MuiOutlinedInput-root': { borderRadius: '8px' },
+                '& input:-webkit-autofill': {
+                  WebkitBoxShadow: '0 0 0 1000px white inset !important',
+                  WebkitTextFillColor: '#333 !important'
+                }
+              }}
             />
             <TextField
               label="Password"
+              placeholder="Ingrese su contraseña"
               type={showPassword ? 'text' : 'password'}
               fullWidth
               margin="normal"
               value={password}
               onChange={(e) => { const v = e.target.value; setPassword(v); setPasswordError(v.length >= 6 ? '' : 'La contraseña debe tener al menos 6 caracteres'); }}
+              onFocus={handleFieldFocus}
               required
               helperText={passwordError || 'Debe ser de al menos 6 caracteres'}
               variant="outlined"
-              InputProps={{
-                startAdornment: (<InputAdornment position="start"><LockIcon color="action" /></InputAdornment>),
-                endAdornment: (<InputAdornment position="end"><IconButton onClick={() => setShowPassword(!showPassword)} edge="end">{showPassword ? <VisibilityOff /> : <Visibility />}</IconButton></InputAdornment>)
+              autoComplete="off"
+              slotProps={{
+                input: {
+                  name: "field-password-reg",
+                  startAdornment: (<InputAdornment position="start"><LockIcon color="action" /></InputAdornment>),
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton onClick={() => setShowPassword(!showPassword)} edge="end" aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}>
+                        {showPassword ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  )
+                }
               }}
               error={!!passwordError}
-              sx={{ '& .MuiOutlinedInput-root': { borderRadius: '8px' } }}
+              sx={{
+                '& .MuiOutlinedInput-root': { borderRadius: '8px' },
+                '& input:-webkit-autofill': {
+                  WebkitBoxShadow: '0 0 0 1000px white inset !important',
+                  WebkitTextFillColor: '#333 !important'
+                }
+              }}
             />
             {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
             <Button type="submit" variant="contained" fullWidth sx={{ mt: 3, py: 1.2, background: 'linear-gradient(90deg,#3B82F6,#60A5FA)', color: '#fff', fontWeight: 700, '&:hover': { filter: 'brightness(0.95)' } }}>

@@ -135,12 +135,12 @@ export default function NotificationsPanel() {
       const currentActivities = activitiesRef.current;
 
       tasks.forEach((task: any) => {
-        // Solo procesar tareas que cumplen los criterios: asignada, fecha, y "Por hacer"
+        // Solo procesar tareas que cumplen los criterios: asignada, fecha, y aún no completada
         const isAssignedToUser = Array.isArray(task.assignees) && task.assignees.includes(user.uid);
-        const isInTodoStatus = task.status === 'todo';
+        const isActiveStatus = task.status === 'todo' || task.status === 'in_progress';
         
         const rawDue = task.dueDate;
-        if (!rawDue || !isAssignedToUser || !isInTodoStatus) return;
+        if (!rawDue || !isAssignedToUser || !isActiveStatus) return;
         
         const due = rawDue.toDate ? rawDue.toDate() : new Date(rawDue);
         const diff = due.getTime() - now.getTime();
