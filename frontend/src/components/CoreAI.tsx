@@ -1,8 +1,8 @@
 import { useMemo, useState, useEffect } from 'react';
-import { Drawer, Box, Typography, Button, IconButton, Divider } from '@mui/material';
+import { Drawer, Box, Typography, Button, IconButton, Divider, FormControlLabel, Switch } from '@mui/material';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import CloseIcon from '@mui/icons-material/Close';
-import { subscribeToTasks } from '../services/taskService';
+import { subscribeToTasks, updateTask } from '../services/taskService';
 
 interface CoreAIProps {
   items?: any[];
@@ -26,10 +26,55 @@ function formatDate(d: Date): string {
   });
 }
 
+function getCanonicalStatus(s: any): 'completed' | 'in_progress' | 'todo' | 'other' {
+  if (!s && s !== '') return 'todo';
+  const v = String(s || '').toLowerCase().trim();
+  if (!v) return 'todo';
+  if (v.includes('comp') || v.includes('done') || v.includes('complet')) return 'completed';
+  if (v.includes('progress') || v.includes('in_progress') || v.includes('en progreso') || v.includes('en_progress') || v.includes('inprogress')) return 'in_progress';
+  if (v.includes('todo') || v.includes('por hacer') || v.includes('por_hacer')) return 'todo';
+  return 'other';
+}
+
+function extractStatusFromTask(t: any) {
+  // prefer explicit status fields, but support variations and object shapes
+  if (!t) return '';
+  const candidates = [t.status, t.state, t.column, t.columnId, t.statusKey, t.statusLabel];
+  for (const c of candidates) {
+    if (c === undefined || c === null) continue;
+    if (typeof c === 'string' || typeof c === 'number') {
+      const s = String(c).trim();
+      if (s) return s;
+      continue;
+    }
+    if (typeof c === 'object') {
+      // common object shapes: { name, title, label, status, key, id }
+      const props = ['name', 'title', 'label', 'status', 'key', 'id', 'statusLabel', 'statusKey'];
+      for (const p of props) {
+        if (c[p] !== undefined && c[p] !== null) {
+          const s = String(c[p]).trim();
+          if (s) return s;
+        }
+      }
+      // fallback: search any string value inside the object
+      try {
+        for (const val of Object.values(c)) {
+          if (typeof val === 'string' && val.trim()) return val.trim();
+          if (typeof val === 'number') return String(val);
+        }
+      } catch (err) {
+        // ignore and continue
+      }
+    }
+  }
+  return '';
+}
+
 export default function CoreAI({ items = [], projectId, projectName, userName }: CoreAIProps) {
   const [open, setOpen] = useState(false);
   const [remoteTasks, setRemoteTasks] = useState<any[] | null>(null);
   const [actionMessage, setActionMessage] = useState('');
+  const [autoMarkOverdue, setAutoMarkOverdue] = useState<boolean>(false);
   const name = userName ? userName.split(' ')[0] : 'aquí';
 
   useEffect(() => {
@@ -56,24 +101,34 @@ export default function CoreAI({ items = [], projectId, projectName, userName }:
     const now = Date.now();
     const overdueTasks = itemsList.filter((t: any) => {
       const d = parseDate(t.dueDate || t.dueAt || t.deadline);
-      return d ? d.getTime() < now && (t.status || 'Por hacer') !== 'Completado' : false;
+      // consider a task overdue when due date is past and status is not 'completed'
+      const raw = extractStatusFromTask(t);
+      const st = getCanonicalStatus(raw);
+      return d ? d.getTime() < now && st !== 'completed' : false;
     });
 
     const urgentTasks = itemsList.filter((t: any) => {
       const d = parseDate(t.dueDate || t.dueAt || t.deadline);
       if (!d) return false;
       const diff = d.getTime() - now;
-      return diff > 0 && diff <= 48 * 60 * 60 * 1000 && (t.status || 'Por hacer') !== 'Completado';
+      const raw = extractStatusFromTask(t);
+      const st = getCanonicalStatus(raw);
+      return diff > 0 && diff <= 48 * 60 * 60 * 1000 && st !== 'completed';
     });
 
     const completedToday = itemsList.filter((t: any) => {
-      if ((t.status || '').toString() !== 'Completado') return false;
+      const raw = extractStatusFromTask(t);
+      const st = getCanonicalStatus(raw);
+      if (st !== 'completed') return false;
       const d = parseDate(t.updatedAt || t.completedAt || t.dueDate);
       if (!d) return false;
       return d.toDateString() === new Date().toDateString();
     }).length;
 
-    const inProgress = itemsList.filter((t: any) => (t.status || 'Por hacer') === 'En progreso').length;
+    const inProgress = itemsList.filter((t: any) => {
+      const raw = extractStatusFromTask(t);
+      return getCanonicalStatus(raw) === 'in_progress';
+    }).length;
 
     return {
       overdue: overdueTasks.length,
@@ -84,6 +139,25 @@ export default function CoreAI({ items = [], projectId, projectName, userName }:
       urgentTasks,
     };
   }, [itemsList]);
+
+  // Effect: when auto-mark is enabled, mark overdue tasks as completed automatically
+  useEffect(() => {
+    if (!autoMarkOverdue || !remoteTasks || !remoteTasks.length) return;
+    const now = Date.now();
+    const toMark = remoteTasks.filter((t: any) => {
+      const d = parseDate(t.dueDate || t.dueAt || t.deadline);
+      return d ? d.getTime() < now && getCanonicalStatus(extractStatusFromTask(t)) !== 'completed' : false;
+    });
+
+    toMark.forEach(task => {
+      try {
+        // update status to 'completed' (DB uses english keys)
+        updateTask(task.id, { status: 'completed', completedAt: new Date() }).catch((err) => console.error('CoreAI auto-mark error', err));
+      } catch (err) {
+        console.error('CoreAI auto-mark error', err);
+      }
+    });
+  }, [autoMarkOverdue, remoteTasks]);
 
   const recommendations = useMemo(() => {
     const recs: string[] = [];
@@ -265,6 +339,12 @@ export default function CoreAI({ items = [], projectId, projectName, userName }:
             >
               Resumen del día
             </Button>
+          </Box>
+          <Box sx={{ mt: 2, mb: 1 }}>
+            <FormControlLabel
+              control={<Switch checked={autoMarkOverdue} onChange={(e) => setAutoMarkOverdue(e.target.checked)} />}
+              label="Auto-marcar vencidas como completadas"
+            />
           </Box>
           {actionMessage ? (
             <Box sx={{ mt: 2, p: 2, borderRadius: 3, bgcolor: '#eef2ff', border: '1px solid rgba(99, 102, 241, 0.2)' }}>

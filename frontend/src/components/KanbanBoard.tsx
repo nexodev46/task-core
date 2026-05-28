@@ -154,11 +154,25 @@ export default function KanbanBoard() {
 
   return (
     <Box>
+      <Box sx={{ textAlign: 'center', mb: 2 }}>
+        <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>Contadores</Typography>
+        <Typography variant="body1" sx={{ fontWeight: 600, mb: 1 }}>
+          {`Por hacer (${grouped['Por hacer'].length})  —  En progreso (${grouped['En progreso'].length})  —  Completado (${grouped['Completado'].length})`}
+        </Typography>
+        <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2 }}>
+          <Chip label={`Por hacer (${grouped['Por hacer'].length})`} variant="outlined" sx={{ bgcolor: 'rgba(0,0,0,0.03)' }} />
+          <Chip label={`En progreso (${grouped['En progreso'].length})`} variant="outlined" color="primary" sx={{ bgcolor: 'rgba(0,0,0,0.03)' }} />
+          <Chip label={`Completado (${grouped['Completado'].length})`} variant="outlined" color="success" sx={{ bgcolor: 'rgba(0,0,0,0.03)' }} />
+        </Box>
+      </Box>
       <Grid container spacing={3}>
         {Object.entries(grouped).map(([status, taskList]) => (
           <Box key={status} sx={{ width: { xs: '100%', md: '33.3333%' }, minWidth: 0 }} onDrop={(e: DragEvent<HTMLDivElement>) => handleDrop(e, status as StatusLabel)} onDragOver={handleDragOver}>
             <Paper sx={{ p: 2, bgcolor: columnColors[status as StatusLabel] || '#f5f5f5', borderRadius: 2, minHeight: 400, borderLeft: `6px solid ${columnColors[status as StatusLabel] || '#f5f5f5'}` }}>
-              <Typography variant="h6" align="center" gutterBottom>{status}</Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, mb: 1 }}>
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>{status}</Typography>
+                <Typography variant="subtitle2" sx={{ backgroundColor: 'rgba(0,0,0,0.06)', px: 1, py: 0.25, borderRadius: 1 }}>{`(${taskList.length})`}</Typography>
+              </Box>
               {taskList.map((task: TaskItem) => (
                 <Paper
                   key={task.id}

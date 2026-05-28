@@ -266,7 +266,7 @@ export default function KanbanBoard() {
             onDragOver={handleDragOver}
           >
             <Paper sx={{ p: 2.5, bgcolor: columnColors[status as StatusLabel] || '#f5f5f5', borderRadius: 2, minHeight: 520, display: 'flex', flexDirection: 'column', borderLeft: `6px solid ${columnColors[status as StatusLabel] || '#f5f5f5'}` }}>
-              <Typography variant="h6" align="center" gutterBottom>{status}</Typography>
+              <Typography variant="h6" align="center" gutterBottom>{`${status} (${taskList.length})`}</Typography>
               {taskList.map((task) => (
                 <Paper
                   key={task.id}
