@@ -81,3 +81,12 @@ export const updateProjectName = async (projectId, name) => {
   const projectRef = doc(db, 'projects', projectId);
   await updateDoc(projectRef, { name });
 };
+
+// Remover un miembro del proyecto
+export const removeProjectMember = async (projectId, userId) => {
+  const memberQuery = query(collection(db, 'projectMembers'), where('projectId', '==', projectId), where('userId', '==', userId));
+  const snap = await getDocs(memberQuery);
+  for (const memberDoc of snap.docs) {
+    await deleteDoc(doc(db, 'projectMembers', memberDoc.id));
+  }
+};

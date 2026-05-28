@@ -13,7 +13,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { useProject } from '../context/ProjectContext';
-import { getUserProjects, getProjectMembers, createProject, deleteProject, updateProjectName } from '../services/projectService';
+import { getUserProjects, getProjectMembers, createProject, deleteProject, updateProjectName, removeProjectMember } from '../services/projectService';
 import { createInvitation, getPendingInvitations, cancelInvitation } from '../services/invitationService';
 
 // Workaround: MUI Grid typings workaround
@@ -68,6 +68,7 @@ export default function TeamPage() {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renameProjectName, setRenameProjectName] = useState('');
+  const [leaveProjectConfirmOpen, setLeaveProjectConfirmOpen] = useState(false);
 
   // Cargar proyectos del usuario - Se ejecuta cada vez que el componente se monta
   useEffect(() => {
@@ -273,6 +274,28 @@ export default function TeamPage() {
     }
   };
 
+  const handleLeaveProject = async () => {
+    if (!selectedProjectId || !user) return;
+    try {
+      await removeProjectMember(selectedProjectId, user.uid);
+      const remainingProjects = projects.filter(p => p.id !== selectedProjectId);
+      setProjects(remainingProjects);
+
+      if (remainingProjects.length > 0) {
+        setSelectedProjectId(remainingProjects[0].id);
+        setCurrentProject(remainingProjects[0]);
+      } else {
+        setSelectedProjectId('');
+        setCurrentProject(null);
+      }
+    } catch (error) {
+      console.error('Error al salir del proyecto:', error);
+    } finally {
+      setLeaveProjectConfirmOpen(false);
+      handleCloseProjectMenu();
+    }
+  };
+
   const handleCreateProject = async () => {
     if (!newProjectName.trim() || !user) return;
     const projectId = await createProject(newProjectName, user.uid);
@@ -445,6 +468,14 @@ export default function TeamPage() {
                       handleCloseProjectMenu();
                     }}>
                       Eliminar proyecto
+                    </MenuItem>
+                  )}
+                  {!isAdmin && (
+                    <MenuItem onClick={() => {
+                      setLeaveProjectConfirmOpen(true);
+                      handleCloseProjectMenu();
+                    }} sx={{ color: 'error.main' }}>
+                      Salir del proyecto
                     </MenuItem>
                   )}
                 </Menu>
@@ -704,6 +735,20 @@ export default function TeamPage() {
           <Button onClick={async () => { await handleSendInvite(); if (!inviteError) setInviteDialogOpen(false); }} variant="contained" disabled={!inviteEmail.trim() || isInviting}>
             {isInviting ? 'Enviando...' : 'Enviar invitación'}
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Diálogo: Confirmar Salir del Proyecto */}
+      <Dialog open={leaveProjectConfirmOpen} onClose={() => setLeaveProjectConfirmOpen(false)}>
+        <DialogTitle sx={{ fontWeight: 600 }}>Salir del Proyecto</DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
+          <Typography variant="body2">
+            ¿Estás seguro de que deseas salir de este proyecto colaborativo? No podrás acceder a él a menos que el administrador te vuelva a invitar.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setLeaveProjectConfirmOpen(false)}>Cancelar</Button>
+          <Button onClick={handleLeaveProject} variant="contained" color="error">Salir</Button>
         </DialogActions>
       </Dialog>
 
