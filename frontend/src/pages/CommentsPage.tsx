@@ -154,9 +154,11 @@ export default function CommentsPage() {
     );
 
     const unsubscribe = onSnapshot(commentsActivityQuery, (snapshot) => {
-      snapshot.docs.forEach((activityDoc) => {
-        markAsRead(activityDoc.id).catch((err) => console.error('Error marcando comentario como leído:', err));
-      });
+      snapshot.docs
+        .filter((doc) => (doc.data() as any).deleted !== true)
+        .forEach((activityDoc) => {
+          markAsRead(activityDoc.id).catch((err) => console.error('Error marcando comentario como leído:', err));
+        });
     });
 
     return unsubscribe;

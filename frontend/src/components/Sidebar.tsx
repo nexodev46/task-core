@@ -46,6 +46,7 @@ export default function Sidebar() {
 
       snapshot.docs.forEach((doc) => {
         const activity = doc.data();
+        if (activity.deleted === true) return;
         if (activity.action === 'new_message') messages += 1;
         if (activity.action === 'new_comment') comments += 1;
       });

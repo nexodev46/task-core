@@ -107,7 +107,9 @@ export default function MessagesPage() {
     );
 
     const unsubscribe = onSnapshot(notificationsQuery, (snapshot) => {
-      const ids = snapshot.docs.map(d => d.id);
+      const ids = snapshot.docs
+        .filter((doc) => (doc.data() as any).deleted !== true)
+        .map(d => d.id);
       if (ids.length === 0) return;
       // Optimistic local broadcast so the notifications UI updates immediately
       try { window.dispatchEvent(new CustomEvent('activitiesMarkedRead', { detail: { ids } })); } catch (err) { /* ignore */ }

@@ -1,5 +1,5 @@
 import { db } from '../firebase/config';
-import { collection, addDoc, query, where, getDocs, orderBy, limit, updateDoc, doc, deleteDoc } from 'firebase/firestore';
+import { collection, addDoc, query, where, getDocs, orderBy, limit, updateDoc, doc } from 'firebase/firestore';
 
 // Guardar una actividad (extras permitidos en payload)
 export const addActivity = async (userId, action, taskTitle, extras = {}) => {
@@ -9,6 +9,7 @@ export const addActivity = async (userId, action, taskTitle, extras = {}) => {
     taskTitle,
     timestamp: new Date(),
     read: false,
+    deleted: false,
     ...extras
   });
 };
@@ -31,8 +32,8 @@ export const markAsRead = async (activityId) => {
   await updateDoc(ref, { read: true });
 };
 
-// Eliminar una actividad
+// Eliminar una actividad (soft delete para que no se vuelva a recrear cuando se revisen tareas/comentarios)
 export const deleteActivity = async (activityId) => {
   const ref = doc(db, 'activities', activityId);
-  await deleteDoc(ref);
+  await updateDoc(ref, { deleted: true });
 };

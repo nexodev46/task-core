@@ -21,6 +21,8 @@ export default function NotificationsPanel() {
   const [activities, setActivities] = useState<any[]>([]);
   const prevActivitiesRef = useRef<any[]>([]);
   const activitiesRef = useRef<any[]>([]);
+  const seenCommentIdsRef = useRef<Set<string>>(new Set());
+  const initialCommentSnapshotLoadedRef = useRef<Record<string, boolean>>({});
 
   const updateActivitiesState = (updater: (prev: any[]) => any[]) => {
     setActivities((prev) => {
@@ -52,15 +54,15 @@ export default function NotificationsPanel() {
     if (!user) return;
     const q = query(
       collection(db, 'activities'),
-      where('userId', '==', user.uid),
-      limit(20)
+      where('userId', '==', user.uid)
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const items = snapshot.docs
         .map(d => ({ id: d.id, ...d.data() } as any))
-        .sort((a: any, b: any) => (b.timestamp?.toDate ? b.timestamp.toDate().getTime() : 0) - (a.timestamp?.toDate ? a.timestamp.toDate().getTime() : 0));
+        .sort((a: any, b: any) => (b.timestamp?.toDate ? b.timestamp.toDate().getTime() : 0) - (a.timestamp?.toDate ? a.timestamp.toDate().getTime() : 0))
+        .slice(0, 20);
       activitiesRef.current = items;
-      setActivities(items);
+      setActivities(items.filter((item: any) => item.deleted !== true));
     }, (err) => {
       console.error('Activities listener error', err);
     });
@@ -71,6 +73,8 @@ export default function NotificationsPanel() {
   useEffect(() => {
     if (!user) return;
 
+    initialCommentSnapshotLoadedRef.current = {};
+    seenCommentIdsRef.current = new Set();
     const projectId = currentProject?.id || user.uid;
     const qTasks = query(
       collection(db, 'tasks'),
@@ -87,25 +91,30 @@ export default function NotificationsPanel() {
       unsubscribers.forEach(u => u());
       unsubscribers.length = 0;
 
-      const currentActivities = activitiesRef.current;
-
       tasks.forEach(task => {
         const commentsRef = collection(db, 'tasks', task.id, 'comments');
         const q = query(commentsRef, orderBy('createdAt', 'desc'), limit(1));
         const unsub = onSnapshot(q, (snap) => {
+          if (!initialCommentSnapshotLoadedRef.current[task.id]) {
+            initialCommentSnapshotLoadedRef.current[task.id] = true;
+            return;
+          }
+
           snap.docChanges().forEach(change => {
-            if (change.type === 'added') {
-              const c = { id: change.doc.id, ...(change.doc.data() as any) };
-              // si el comentario fue escrito por otro usuario, y no existe actividad para este commentId, crearla
-              if (c.userId !== user.uid) {
-                const exists = currentActivities.some(a => a.action === 'new_comment' && a.commentId === c.id);
-                if (!exists) {
-                  try {
-                    addActivity(user.uid, 'new_comment', (task as any).title || 'Tarea', { taskId: (task as any).id, commentId: c.id });
-                  } catch (err) {
-                    console.error('Error creando actividad por nuevo comentario (listener):', err);
-                  }
-                }
+            if (change.type !== 'added') return;
+
+            const c = { id: change.doc.id, ...(change.doc.data() as any) };
+            if (c.userId === user.uid) return;
+            if (seenCommentIdsRef.current.has(c.id)) return;
+
+            seenCommentIdsRef.current.add(c.id);
+            const currentActivities = activitiesRef.current;
+            const exists = currentActivities.some(a => a.action === 'new_comment' && a.commentId === c.id);
+            if (!exists) {
+              try {
+                addActivity(user.uid, 'new_comment', (task as any).title || 'Tarea', { taskId: (task as any).id, commentId: c.id });
+              } catch (err) {
+                console.error('Error creando actividad por nuevo comentario (listener):', err);
               }
             }
           });
@@ -132,9 +141,9 @@ export default function NotificationsPanel() {
       const tasks = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       const now = new Date();
       const oneDay = 24 * 60 * 60 * 1000;
-      const currentActivities = activitiesRef.current;
 
       tasks.forEach((task: any) => {
+        const currentActivities = activitiesRef.current;
         // Solo procesar tareas que cumplen los criterios: asignada, fecha, y aún no completada
         const isAssignedToUser = Array.isArray(task.assignees) && task.assignees.includes(user.uid);
         const isActiveStatus = task.status === 'todo' || task.status === 'in_progress';
