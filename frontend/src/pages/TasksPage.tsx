@@ -436,7 +436,7 @@ export default function TasksPage() {
             margin="dense"
             value={formData.dueDate}
             onChange={e => setFormData({ ...formData, dueDate: e.target.value })}
-            InputLabelProps={{ shrink: true }}
+            slotProps={{ inputLabel: { shrink: true } }}
           />
         </DialogContent>
         <DialogActions>
