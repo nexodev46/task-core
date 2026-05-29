@@ -161,7 +161,7 @@ export default function DashboardLayout() {
           </Box>
 
           {/* Notificaciones y avatar */}
-           <NotificationsPanel />
+          <NotificationsPanel />
           <Avatar
             src={headerAvatar || undefined}
             sx={{ ml: 2, bgcolor: 'primary.main', cursor: 'pointer' }}

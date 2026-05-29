@@ -1,5 +1,5 @@
-import { useMemo, useState, useEffect } from 'react';
-import { Drawer, Box, Typography, Button, IconButton, Divider, FormControlLabel, Switch } from '@mui/material';
+import { useMemo, useState, useEffect, useRef } from 'react';
+import { Drawer, Box, Typography, Button, IconButton, Divider, FormControlLabel, Switch, Skeleton } from '@mui/material';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import CloseIcon from '@mui/icons-material/Close';
 import { subscribeToTasks, updateTask } from '../services/taskService';
@@ -72,10 +72,22 @@ function extractStatusFromTask(t: any) {
 
 export default function CoreAI({ items = [], projectId, projectName, userName }: CoreAIProps) {
   const [open, setOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
   const [remoteTasks, setRemoteTasks] = useState<any[] | null>(null);
   const [actionMessage, setActionMessage] = useState('');
   const [autoMarkOverdue, setAutoMarkOverdue] = useState<boolean>(false);
+  const skipAutoMarkEffect = useRef(false);
   const name = userName ? userName.split(' ')[0] : 'aquí';
+
+  // saludo según hora
+  const greeting = (() => {
+    try {
+      const h = new Date().getHours();
+      if (h >= 5 && h < 12) return 'Buenos días';
+      if (h >= 12 && h < 19) return 'Buenas tardes';
+      return 'Buenas noches';
+    } catch (e) { return 'Hola'; }
+  })();
 
   useEffect(() => {
     if (!projectId) {
@@ -83,8 +95,10 @@ export default function CoreAI({ items = [], projectId, projectName, userName }:
       return;
     }
 
+    setIsLoading(true);
     const unsubscribe = subscribeToTasks(projectId, (tasks: any[]) => {
       setRemoteTasks(tasks);
+      setIsLoading(false);
     });
 
     return () => {
@@ -140,23 +154,41 @@ export default function CoreAI({ items = [], projectId, projectName, userName }:
     };
   }, [itemsList]);
 
-  // Effect: when auto-mark is enabled, mark overdue tasks as completed automatically
-  useEffect(() => {
-    if (!autoMarkOverdue || !remoteTasks || !remoteTasks.length) return;
+  const markOverdueTasks = async () => {
+    const sourceTasks = remoteTasks || itemsList;
     const now = Date.now();
-    const toMark = remoteTasks.filter((t: any) => {
+    const overdueTasks = sourceTasks.filter((t: any) => {
       const d = parseDate(t.dueDate || t.dueAt || t.deadline);
       return d ? d.getTime() < now && getCanonicalStatus(extractStatusFromTask(t)) !== 'completed' : false;
     });
 
-    toMark.forEach(task => {
+    if (!overdueTasks.length) {
+      setActionMessage('No hay tareas vencidas para marcar en este momento.');
+      return;
+    }
+
+    let updatedCount = 0;
+    await Promise.all(overdueTasks.map(async (task) => {
+      if (!task?.id) return;
       try {
-        // update status to 'completed' (DB uses english keys)
-        updateTask(task.id, { status: 'completed', completedAt: new Date() }).catch((err) => console.error('CoreAI auto-mark error', err));
+        await updateTask(task.id, { status: 'completed', completedAt: new Date() });
+        updatedCount += 1;
       } catch (err) {
         console.error('CoreAI auto-mark error', err);
       }
-    });
+    }));
+
+    setActionMessage(`Auto-marcar: ${updatedCount} tarea${updatedCount === 1 ? '' : 's'} vencida${updatedCount === 1 ? '' : 's'} marcada${updatedCount === 1 ? '' : 's'} como completada.`);
+  };
+
+  // Effect: when auto-mark is enabled, mark overdue tasks as completed automatically
+  useEffect(() => {
+    if (!autoMarkOverdue || !remoteTasks || !remoteTasks.length) return;
+    if (skipAutoMarkEffect.current) {
+      skipAutoMarkEffect.current = false;
+      return;
+    }
+    markOverdueTasks();
   }, [autoMarkOverdue, remoteTasks]);
 
   const recommendations = useMemo(() => {
@@ -249,7 +281,7 @@ export default function CoreAI({ items = [], projectId, projectName, userName }:
               ASISTENTE PREMIUM
             </Typography>
             <Typography variant="h5" sx={{ fontWeight: 800, mb: 0.5 }}>
-              Hola, {name}
+              {`${greeting}, ${name} 👋`}
             </Typography>
             <Typography variant="body2" color="text.secondary">
               Tu copiloto de productividad personal.
@@ -297,11 +329,20 @@ export default function CoreAI({ items = [], projectId, projectName, userName }:
 
           <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>Recomendaciones</Typography>
           <Box sx={{ display: 'grid', gap: 1.25, mb: 3 }}>
-            {recommendations.map((r, i) => (
-              <Box key={i} sx={{ p: 2, borderRadius: 3, background: '#ffffff', border: '1px solid rgba(15, 23, 42, 0.08)', boxShadow: '0 10px 20px rgba(15, 23, 42, 0.04)' }}>
-                <Typography variant="body2" sx={{ color: '#111827' }}>{`→ ${r}`}</Typography>
-              </Box>
-            ))}
+            {isLoading ? (
+              [0,1,2].map(i => (
+                <Box key={i} sx={{ p: 2, borderRadius: 3, background: '#ffffff', border: '1px solid rgba(15, 23, 42, 0.04)' }}>
+                  <Skeleton variant="text" width="80%" />
+                  <Skeleton variant="text" width="60%" />
+                </Box>
+              ))
+            ) : (
+              recommendations.map((r, i) => (
+                <Box key={i} sx={{ p: 2, borderRadius: 3, background: '#ffffff', border: '1px solid rgba(15, 23, 42, 0.08)', boxShadow: '0 10px 20px rgba(15, 23, 42, 0.04)' }}>
+                  <Typography variant="body2" sx={{ color: '#111827' }}>{`→ ${r}`}</Typography>
+                </Box>
+              ))
+            )}
           </Box>
 
           <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2 }}>
@@ -342,14 +383,26 @@ export default function CoreAI({ items = [], projectId, projectName, userName }:
           </Box>
           <Box sx={{ mt: 2, mb: 1 }}>
             <FormControlLabel
-              control={<Switch checked={autoMarkOverdue} onChange={(e) => setAutoMarkOverdue(e.target.checked)} />}
+              control={<Switch checked={autoMarkOverdue} onChange={async (e) => {
+                const checked = e.target.checked;
+                setAutoMarkOverdue(checked);
+                if (checked && remoteTasks && remoteTasks.length) {
+                  skipAutoMarkEffect.current = true;
+                  await markOverdueTasks();
+                }
+              }} />}
               label="Auto-marcar vencidas como completadas"
             />
           </Box>
           {actionMessage ? (
             <Box sx={{ mt: 2, p: 2, borderRadius: 3, bgcolor: '#eef2ff', border: '1px solid rgba(99, 102, 241, 0.2)' }}>
-              <Typography variant="body2" sx={{ color: '#3730a3' }}>
-                {actionMessage}
+              <Typography variant="body2" sx={{ color: '#3730a3', display: 'flex', alignItems: 'center', gap: 1 }}>
+                <span>{actionMessage}</span>
+                <Box component="span" sx={{ display: 'inline-flex', gap: 0.4, ml: 0.5, '& span': { width: 6, height: 6, bgcolor: '#6366f1', borderRadius: '50%', display: 'inline-block', animation: 'dots 1.2s linear infinite' }, '& span:nth-of-type(2)': { animationDelay: '0.12s' }, '& span:nth-of-type(3)': { animationDelay: '0.24s' }, '@keyframes dots': { '0%': { transform: 'translateY(0)', opacity: 0.2 }, '50%': { transform: 'translateY(-6px)', opacity: 1 }, '100%': { transform: 'translateY(0)', opacity: 0.2 } } }}>
+                  <span />
+                  <span />
+                  <span />
+                </Box>
               </Typography>
             </Box>
           ) : null}
