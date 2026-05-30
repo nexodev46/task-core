@@ -211,7 +211,7 @@ export default function Login() {
           </Box>
         </Box>
 
-        <Box sx={{ flex: 1, display: { xs: 'none', md: 'flex' }, alignItems: 'center', justifyContent: 'center', p: { xs: 4, md: 6 }, bgcolor: 'transparent' }}>
+        <Box sx={{ flex: 1, display: { xs: 'none', md: 'flex' }, alignItems: 'center', justifyContent: 'center', p: { xs: 4, md: 6 }, bgcolor: theme.palette.mode === 'dark' ? '#111827' : '#e8f4ff' }}>
           <Box
             component="img"
             src={loginImage}
@@ -223,6 +223,7 @@ export default function Login() {
               boxShadow: 3,
               objectFit: 'cover',
               minHeight: 320,
+              backgroundColor: theme.palette.mode === 'dark' ? '#111827' : '#e8f4ff',
             }}
           />
         </Box>
