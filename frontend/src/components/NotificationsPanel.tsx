@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { IconButton, Badge, Popover, Box, List, ListItem, ListItemText, ListItemAvatar, Avatar, Typography, Divider, Button, Slider } from '@mui/material';
+import { keyframes } from '@emotion/react';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import VolumeUpIcon from '@mui/icons-material/VolumeUp';
 import VolumeOffIcon from '@mui/icons-material/VolumeOff';
@@ -13,6 +14,25 @@ import { db } from '../firebase/config';
 import { collection, query, where, orderBy, limit, onSnapshot, updateDoc, doc } from 'firebase/firestore';
 import { markAsRead, addActivity, deleteActivity } from '../services/activityService';
 import { acceptInvitation } from '../services/invitationService';
+
+// Animaciones para la campanita
+const pulseAnimation = keyframes`
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.15);
+  }
+`;
+
+const bounceAnimation = keyframes`
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+`;
 
 export default function NotificationsPanel() {
   const { user } = useAuth();
@@ -293,9 +313,44 @@ export default function NotificationsPanel() {
 
   return (
     <>
-      <IconButton color="inherit" onClick={handleOpen} aria-label="notificaciones">
-        <Badge badgeContent={unreadCount} color="error">
-          <NotificationsIcon />
+      <IconButton
+        color="inherit"
+        onClick={handleOpen}
+        aria-label="notificaciones"
+        sx={{
+          position: 'relative',
+          transition: 'all 0.2s ease',
+          borderRadius: '12px',
+          padding: '8px',
+          '&:hover': {
+            bgcolor: 'action.hover',
+            transform: 'scale(1.08)',
+          },
+          ...(unreadCount > 0 && {
+            animation: `${bounceAnimation} 0.6s ease-in-out infinite`,
+          }),
+        }}
+      >
+        <Badge
+          badgeContent={unreadCount}
+          color="error"
+          sx={{
+            '& .MuiBadge-badge': {
+              bgcolor: 'error.main',
+              boxShadow: '0 4px 12px rgba(244, 67, 54, 0.4)',
+              fontWeight: 'bold',
+            },
+          }}
+        >
+          <NotificationsIcon
+            sx={{
+              fontSize: '1.5rem',
+              ...(unreadCount > 0 && {
+                animation: `${pulseAnimation} 0.8s ease-in-out infinite`,
+                filter: 'drop-shadow(0 2px 8px rgba(0, 0, 0, 0.12))',
+              }),
+            }}
+          />
         </Badge>
       </IconButton>
 
