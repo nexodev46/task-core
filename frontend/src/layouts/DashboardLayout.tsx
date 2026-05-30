@@ -164,7 +164,21 @@ export default function DashboardLayout() {
           <NotificationsPanel />
           <Avatar
             src={headerAvatar || undefined}
-            sx={{ ml: 2, bgcolor: 'primary.main', cursor: 'pointer' }}
+            sx={{
+              ml: 2,
+              width: 44,
+              height: 44,
+              bgcolor: 'primary.main',
+              cursor: 'pointer',
+              border: '2px solid',
+              borderColor: 'primary.dark',
+              boxShadow: '0 8px 20px rgba(0, 0, 0, 0.16)',
+              transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+              '&:hover': {
+                transform: 'translateY(-1px)',
+                boxShadow: '0 10px 28px rgba(0, 0, 0, 0.22)',
+              },
+            }}
             onClick={() => navigate('/profile')}
           >
             {!headerAvatar && (user?.displayName?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || 'U')}
