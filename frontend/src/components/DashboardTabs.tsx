@@ -11,6 +11,8 @@ import { db } from '../firebase/config';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { createTask, updateTask, deleteTask } from '../services/taskService';
 import CoreAI from './CoreAI';
+import { FilterConfig } from './FilterPanel';
+
 type StatusKey = 'todo' | 'in_progress' | 'completed';
 type StatusLabel = 'Por hacer' | 'En progreso' | 'Completado';
 
@@ -31,6 +33,10 @@ interface NewTask {
   tags: string[];
 }
 
+interface KanbanBoardProps {
+  filters?: FilterConfig;
+}
+
 const statusMap = {
   'todo': 'Por hacer',
   'in_progress': 'En progreso',
@@ -43,8 +49,7 @@ const reverseStatusMap: Record<StatusLabel, StatusKey> = {
   'Completado': 'completed'
 };
 
-
-export default function KanbanBoard() {
+export default function KanbanBoard({ filters }: KanbanBoardProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [firstLoad, setFirstLoad] = useState(true);
@@ -215,10 +220,65 @@ export default function KanbanBoard() {
   const uniqueById = <T extends { id: string }>(items: T[]) =>
     Array.from(new Map(items.map(item => [item.id, item])).values());
 
-  const filteredTasks = uniqueById(tasks).filter((task) =>
+  const isTaskOverdue = (dueDate: Date | null | undefined): boolean => {
+    if (!dueDate) return false;
+    return dueDate < new Date();
+  };
+
+  const isTaskDueSoon = (dueDate: Date | null | undefined): boolean => {
+    if (!dueDate) return false;
+    const now = new Date();
+    const oneDay = 24 * 60 * 60 * 1000;
+    const diff = dueDate.getTime() - now.getTime();
+    return diff <= oneDay && diff >= 0;
+  };
+
+  let filteredTasks = uniqueById(tasks).filter((task) =>
     task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
     task.description.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  // Aplicar filtros avanzados del panel
+  if (filters) {
+    filteredTasks = filteredTasks.filter((task) => {
+      // Filtro de estado
+      const statusKey = task.status as StatusKey;
+      if (!filters.status[statusKey]) return false;
+
+      // Filtro de etiquetas
+      if (filters.tags.length > 0) {
+        const hasMatchingTag = filters.tags.some((tag) =>
+          task.tags.includes(tag)
+        );
+        if (!hasMatchingTag) return false;
+      }
+
+      // Filtro de fecha
+      if (filters.dateFilter !== 'all') {
+        if (filters.dateFilter === 'overdue' && !isTaskOverdue(task.dueDate)) {
+          return false;
+        }
+        if (filters.dateFilter === 'due_soon' && !isTaskDueSoon(task.dueDate)) {
+          return false;
+        }
+        if (filters.dateFilter === 'no_date' && task.dueDate) {
+          return false;
+        }
+      }
+
+      // Filtro de comentarios
+      if (filters.hasComments !== 'all') {
+        if (filters.hasComments === 'with_comments' && task.commentsCount === 0) {
+          return false;
+        }
+        if (filters.hasComments === 'without_comments' && task.commentsCount > 0) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }
 
   // Agrupar tareas por estado en español
   const grouped: Record<StatusLabel, Task[]> = {
