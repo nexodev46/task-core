@@ -139,7 +139,22 @@ export default function DashboardLayout() {
                 type="search"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                sx={{ width: { xs: '80%', sm: 300 } }}
+                sx={{
+                  width: { xs: '80%', sm: 300 },
+                  '& .MuiOutlinedInput-root': {
+                    '& fieldset': {
+                      borderColor: '#6b5b95',
+                      borderWidth: 2,
+                    },
+                    '&:hover fieldset': {
+                      borderColor: '#4f3f84',
+                    },
+                    '&.Mui-focused fieldset': {
+                      borderColor: '#4f3f84',
+                      boxShadow: '0 0 0 4px rgba(79, 63, 132, 0.16)',
+                    },
+                  },
+                }}
                 autoComplete="off"
                 slotProps={{
                   htmlInput: {
