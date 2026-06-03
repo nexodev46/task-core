@@ -293,6 +293,12 @@ export default function KanbanBoard({ filters }: KanbanBoardProps) {
     'Completado': '#dcfce7'   // tono verde muy suave
   };
 
+  const columnAccentBars: Record<StatusLabel, string[]> = {
+    'Por hacer': ['#ffd5a8', '#ffc69a', '#ffb07a'],
+    'En progreso': ['#9be3ff', '#6fcfff', '#2b9bff'],
+    'Completado': ['#c6f6d5', '#9fe9b8', '#6fe09a']
+  };
+
   const tagPalette = [
     { bg: '#eef2ff', color: '#1e3a8a', border: '#c7d2fe' },
     { bg: '#fef3c7', color: '#92400e', border: '#fde68a' },
@@ -327,6 +333,22 @@ export default function KanbanBoard({ filters }: KanbanBoardProps) {
           >
             <Paper sx={{ p: 2.5, bgcolor: columnColors[status as StatusLabel] || '#f5f5f5', borderRadius: 2, minHeight: 520, display: 'flex', flexDirection: 'column', borderLeft: `6px solid ${columnColors[status as StatusLabel] || '#f5f5f5'}` }}>
               <Typography variant="h6" align="center" gutterBottom>{`${status} (${taskList.length})`}</Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1.2, mb: 1 }} aria-hidden>
+                {(columnAccentBars[status as StatusLabel] || ['#d1d5db','#9ca3af','#6b7280']).map((c, i) => (
+                  <Box
+                    key={i}
+                    component="span"
+                    sx={{
+                      width: { xs: 28, sm: 36 },
+                      height: 6,
+                      borderRadius: 3,
+                      background: c,
+                      display: 'inline-block',
+                      boxShadow: '0 6px 18px rgba(15, 23, 42, 0.06)'
+                    }}
+                  />
+                ))}
+              </Box>
               {taskList.map((task) => (
                 <Paper
                   key={task.id}
