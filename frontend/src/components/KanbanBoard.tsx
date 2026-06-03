@@ -127,21 +127,28 @@ export default function KanbanBoard() {
   const handleDragStart = (e: any, id: string | number, status: StatusLabel) => {
     e.dataTransfer.setData('taskId', String(id));
     e.dataTransfer.setData('sourceStatus', status);
+    e.dataTransfer.effectAllowed = 'move';
   };
   const handleDrop = (e: any, targetStatus: StatusLabel) => {
     const taskId = parseInt(e.dataTransfer.getData('taskId'));
     const sourceStatus = e.dataTransfer.getData('sourceStatus') as StatusLabel;
-    if (sourceStatus === targetStatus) return;
+    if (sourceStatus === targetStatus) {
+      return;
+    }
     // Support numeric ids (local) and string ids (remote)
     const parsedIdNum = Number.isNaN(Number(taskId)) ? e.dataTransfer.getData('taskId') : taskId;
     let task: TaskItem | undefined;
     if (remoteTasks) {
       task = remoteTasks.find((t) => String(t.id) === String(parsedIdNum));
-      if (!task) return;
+      if (!task) {
+        return;
+      }
       updateTask(String(task.id), { status: targetStatus }).catch((err: any) => console.error('updateTask error', err));
     } else {
       task = tasks[sourceStatus].find((t: TaskItem) => t.id === parsedIdNum);
-      if (!task) return;
+      if (!task) {
+        return;
+      }
       setTasks({
         ...tasks,
         [sourceStatus]: tasks[sourceStatus].filter((t: TaskItem) => t.id !== parsedIdNum),
@@ -196,10 +203,10 @@ export default function KanbanBoard() {
                       variant="subtitle1"
                       sx={{
                         fontWeight: 'bold',
-                        wordBreak: 'break-word',
-                        overflowWrap: 'anywhere',
                         fontSize: '1.05rem',
                         lineHeight: 1.2,
+                        whiteSpace: 'normal',
+                        flex: 1,
                       }}
                     >
                       {task.title}

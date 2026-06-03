@@ -295,7 +295,7 @@ export default function TasksPage() {
                 <CardContent sx={{ flexGrow: 1, p: 3, position: 'relative' }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1, gap: 1 }}>
                     <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <Typography variant="h6" sx={{ fontWeight: 700, wordBreak: 'break-all', overflowWrap: 'break-word' }}>{task.title}</Typography>
+                      <Typography variant="h6" sx={{ fontWeight: 700, whiteSpace: 'normal' }}>{task.title}</Typography>
                       {isTaskOverdue(task) && (
                         <Chip
                           label="Atrasada"
