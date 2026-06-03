@@ -1,5 +1,5 @@
 import { db } from '../firebase/config';
-import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, where, onSnapshot, setDoc } from 'firebase/firestore';
 
 const tasksCollection = collection(db, 'tasks');
 
@@ -39,4 +39,19 @@ export const updateTask = async (taskId, updatedData) => {
 export const deleteTask = async (taskId) => {
   const taskRef = doc(db, 'tasks', taskId);
   await deleteDoc(taskRef);
+};
+
+export const restoreTask = async (taskData) => {
+  const taskRef = doc(db, 'tasks', taskData.id);
+  await setDoc(taskRef, {
+    title: taskData.title,
+    description: taskData.description,
+    status: taskData.status,
+    projectId: taskData.projectId,
+    tags: taskData.tags || [],
+    commentsCount: taskData.commentsCount ?? 0,
+    dueDate: taskData.dueDate || null,
+    createdAt: taskData.createdAt || new Date(),
+    updatedAt: new Date(),
+  });
 };

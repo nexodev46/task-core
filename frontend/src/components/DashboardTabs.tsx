@@ -9,7 +9,7 @@ import { useAuth } from '../context/AuthContext';
 import { useProject } from '../context/ProjectContext';
 import { db } from '../firebase/config';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { createTask, updateTask, deleteTask } from '../services/taskService';
+import { createTask, updateTask, deleteTask, restoreTask } from '../services/taskService';
 import CoreAI from './CoreAI';
 import { FilterConfig } from './FilterPanel';
 
@@ -23,7 +23,10 @@ interface Task {
   status: StatusKey;
   tags: string[];
   commentsCount: number;
+  projectId: string;
   dueDate?: Date | null;
+  createdAt?: any;
+  updatedAt?: any;
 }
 
 interface NewTask {
@@ -56,6 +59,8 @@ export default function KanbanBoard({ filters }: KanbanBoardProps) {
   const [open, setOpen] = useState(false);
   const [newTask, setNewTask] = useState<NewTask>({ title: '', description: '', status: 'Por hacer', tags: [] });
   const [newTag, setNewTag] = useState<string>('');
+  const [lastDeletedTask, setLastDeletedTask] = useState<Task | null>(null);
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { searchTerm } = useSearch();
 
   const { user } = useAuth();
@@ -80,7 +85,10 @@ export default function KanbanBoard({ filters }: KanbanBoardProps) {
               status: data.status as StatusKey,
               tags: (data.tags || []) as string[],
               commentsCount: data.commentsCount || 0,
+              projectId: data.projectId || projectId,
               dueDate: data.dueDate ? (data.dueDate.toDate ? data.dueDate.toDate() : parseDateInput(data.dueDate)) : null,
+              createdAt: data.createdAt,
+              updatedAt: data.updatedAt,
             });
           }
           return map;
@@ -114,6 +122,54 @@ export default function KanbanBoard({ filters }: KanbanBoardProps) {
 
   const dragTaskId = useRef<string | null>(null);
   const dropCompleted = useRef(false);
+
+  const clearUndoState = () => {
+    if (undoTimerRef.current) {
+      window.clearTimeout(undoTimerRef.current);
+      undoTimerRef.current = null;
+    }
+    setLastDeletedTask(null);
+  };
+
+  const scheduleUndoState = (task: Task) => {
+    setLastDeletedTask(task);
+    if (undoTimerRef.current) {
+      window.clearTimeout(undoTimerRef.current);
+    }
+    undoTimerRef.current = window.setTimeout(() => {
+      setLastDeletedTask(null);
+      undoTimerRef.current = null;
+    }, 10000);
+  };
+
+  const handleUndoDelete = async () => {
+    if (!lastDeletedTask) return;
+
+    try {
+      setTasks(prevTasks => [lastDeletedTask, ...prevTasks.filter(task => task.id !== lastDeletedTask.id)]);
+      await restoreTask(lastDeletedTask);
+    } catch (err) {
+      console.error('Error al deshacer eliminación de tarea:', err);
+    } finally {
+      clearUndoState();
+    }
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
+        if (lastDeletedTask) {
+          event.preventDefault();
+          handleUndoDelete();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [lastDeletedTask]);
 
   const handleAddTask = async () => {
     if (!newTask.title.trim()) return;
@@ -159,13 +215,16 @@ export default function KanbanBoard({ filters }: KanbanBoardProps) {
     }
 
     const previousTasks = tasks;
+    const deletedTask = previousTasks.find(task => task.id === taskId);
     setTasks(prevTasks => prevTasks.filter(task => task.id !== taskId));
+    if (deletedTask) scheduleUndoState(deletedTask);
 
     try {
       await deleteTask(taskId);
     } catch (err) {
       console.error('Error al eliminar tarea fuera del tablero:', err);
       setTasks(previousTasks);
+      clearUndoState();
     }
   };
 
@@ -199,13 +258,16 @@ export default function KanbanBoard({ filters }: KanbanBoardProps) {
     if (!taskId) return;
 
     const previousTasks = tasks;
+    const deletedTask = previousTasks.find(task => task.id === taskId);
     setTasks(prevTasks => prevTasks.filter(task => task.id !== taskId));
+    if (deletedTask) scheduleUndoState(deletedTask);
 
     try {
       await deleteTask(taskId);
     } catch (err) {
       console.error('Error al eliminar tarea fuera del tablero:', err);
       setTasks(previousTasks);
+      clearUndoState();
     }
   };
 
@@ -324,6 +386,16 @@ export default function KanbanBoard({ filters }: KanbanBoardProps) {
 
   return (
     <Box onDrop={handleDropOutside} onDragOver={handleDragOver}>
+      {lastDeletedTask && (
+        <Box sx={{ mb: 2, p: 2, borderRadius: 2, bgcolor: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e293b', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+          <Typography sx={{ fontSize: '0.95rem' }}>
+            Tarea "{lastDeletedTask.title}" eliminada. Presiona <strong>Ctrl+Z</strong> para deshacer.
+          </Typography>
+          <Button size="small" onClick={handleUndoDelete} sx={{ textTransform: 'none' }}>
+            Deshacer
+          </Button>
+        </Box>
+      )}
       <Box sx={{ display: 'grid', gap: 3, gridTemplateColumns: { xs: '1fr', md: 'repeat(3, minmax(280px, 1fr))' }, alignItems: 'start' }}>
         {Object.entries(grouped).map(([status, taskList]) => (
           <Box
