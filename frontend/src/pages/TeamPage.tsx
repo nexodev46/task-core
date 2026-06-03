@@ -244,10 +244,18 @@ export default function TeamPage() {
 
   const handleDeleteMember = async () => {
     if (!memberToDelete || !selectedProjectId) return;
-    // TODO: Implementar lógica para eliminar miembro del backend
-    setMembers(members.filter(m => m.userId !== memberToDelete.userId));
-    setDeleteConfirmOpen(false);
-    setMemberToDelete(null);
+
+    try {
+      await removeProjectMember(selectedProjectId, memberToDelete.userId);
+      const updatedMembers = members.filter(m => m.userId !== memberToDelete.userId);
+      setMembers(updatedMembers);
+      membersCacheRef.current[selectedProjectId] = updatedMembers;
+    } catch (error) {
+      console.error('Error eliminando miembro del proyecto:', error);
+    } finally {
+      setDeleteConfirmOpen(false);
+      setMemberToDelete(null);
+    }
   };
 
   const handleConfirmDeleteProject = async () => {
