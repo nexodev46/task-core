@@ -60,10 +60,10 @@ export default function KanbanBoard({ filters }: KanbanBoardProps) {
   const [open, setOpen] = useState(false);
   const [newTask, setNewTask] = useState<NewTask>({ title: '', description: '', status: 'Por hacer', tags: [] });
   const [newTag, setNewTag] = useState<string>('');
-  const [lastDeletedTask, setLastDeletedTask] = useState<Task | null>(null);
+  const [deletedTasksStack, setDeletedTasksStack] = useState<Task[]>([]);
   const [ripples, setRipples] = useState<Record<string, { left: number; top: number; size: number; active: boolean }>>({});
   const rashRef = useRef<Record<string, number>>({});
-  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const deletedTaskTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const { searchTerm } = useSearch();
 
   const theme = useTheme();
@@ -128,11 +128,11 @@ export default function KanbanBoard({ filters }: KanbanBoardProps) {
   const dropCompleted = useRef(false);
 
   const clearUndoState = () => {
-    if (undoTimerRef.current) {
-      window.clearTimeout(undoTimerRef.current);
-      undoTimerRef.current = null;
-    }
-    setLastDeletedTask(null);
+    deletedTaskTimersRef.current.forEach(timer => {
+      window.clearTimeout(timer);
+    });
+    deletedTaskTimersRef.current.clear();
+    setDeletedTasksStack([]);
   };
 
   const triggerRipple = (taskId: string, e: MouseEvent<HTMLElement>) => {
@@ -165,33 +165,51 @@ export default function KanbanBoard({ filters }: KanbanBoardProps) {
   }, []);
 
   const scheduleUndoState = (task: Task) => {
-    setLastDeletedTask(task);
-    if (undoTimerRef.current) {
-      window.clearTimeout(undoTimerRef.current);
+    // Agregar tarea a la pila
+    setDeletedTasksStack(prev => [...prev, task]);
+    
+    // Limpiar timer anterior si existe para esta tarea
+    const existingTimer = deletedTaskTimersRef.current.get(task.id);
+    if (existingTimer) {
+      window.clearTimeout(existingTimer);
     }
-    undoTimerRef.current = window.setTimeout(() => {
-      setLastDeletedTask(null);
-      undoTimerRef.current = null;
-    }, 10000);
+    
+    // Crear nuevo timer para esta tarea (3 horas = 10800000 ms)
+    const timer = window.setTimeout(() => {
+      setDeletedTasksStack(prev => prev.filter(t => t.id !== task.id));
+      deletedTaskTimersRef.current.delete(task.id);
+    }, 10800000);
+    
+    deletedTaskTimersRef.current.set(task.id, timer);
   };
 
   const handleUndoDelete = async () => {
-    if (!lastDeletedTask) return;
-
-    try {
-      setTasks(prevTasks => [lastDeletedTask, ...prevTasks.filter(task => task.id !== lastDeletedTask.id)]);
-      await restoreTask(lastDeletedTask);
-    } catch (err) {
-      console.error('Error al deshacer eliminación de tarea:', err);
-    } finally {
-      clearUndoState();
-    }
+    setDeletedTasksStack(prev => {
+      if (prev.length === 0) return prev;
+      
+      const taskToRestore = prev[prev.length - 1]; // Última tarea agregada (LIFO)
+      const newStack = prev.slice(0, -1); // Remover de la pila
+      
+      // Limpiar timer para esta tarea
+      const timer = deletedTaskTimersRef.current.get(taskToRestore.id);
+      if (timer) {
+        window.clearTimeout(timer);
+        deletedTaskTimersRef.current.delete(taskToRestore.id);
+      }
+      
+      // Restaurar la tarea
+      restoreTask(taskToRestore).catch(err => {
+        console.error('Error al deshacer eliminación de tarea:', err);
+      });
+      
+      return newStack;
+    });
   };
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
-        if (lastDeletedTask) {
+        if (deletedTasksStack.length > 0) {
           event.preventDefault();
           handleUndoDelete();
         }
@@ -202,7 +220,7 @@ export default function KanbanBoard({ filters }: KanbanBoardProps) {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [lastDeletedTask]);
+  }, [deletedTasksStack]);
 
   const handleAddTask = async () => {
     if (!newTask.title.trim()) return;
@@ -441,16 +459,6 @@ export default function KanbanBoard({ filters }: KanbanBoardProps) {
 
   return (
     <Box onDrop={handleDropOutside} onDragOver={handleDragOver}>
-      {lastDeletedTask && (
-        <Box sx={{ mb: 2, p: 2, borderRadius: 2, bgcolor: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e293b', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
-          <Typography sx={{ fontSize: '0.95rem' }}>
-            Tarea "{lastDeletedTask.title}" eliminada. Presiona <strong>Ctrl+Z</strong> para deshacer.
-          </Typography>
-          <Button size="small" onClick={handleUndoDelete} sx={{ textTransform: 'none' }}>
-            Deshacer
-          </Button>
-        </Box>
-      )}
       <Box sx={{ display: 'grid', gap: 3, gridTemplateColumns: { xs: '1fr', md: 'repeat(3, minmax(280px, 1fr))' }, alignItems: 'start' }}>
         {Object.entries(grouped).map(([status, taskList]) => (
           <Box
