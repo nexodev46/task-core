@@ -51,6 +51,10 @@ export const restoreTask = async (taskData) => {
     tags: taskData.tags || [],
     commentsCount: taskData.commentsCount ?? 0,
     dueDate: taskData.dueDate || null,
+    creatorId: taskData.creatorId || '',
+    creatorName: taskData.creatorName || '',
+    creatorPhoto: taskData.creatorPhoto || '',
+    creatorEmoji: taskData.creatorEmoji || '👤',
     createdAt: taskData.createdAt || new Date(),
     updatedAt: new Date(),
   });

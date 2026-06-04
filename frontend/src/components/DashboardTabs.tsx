@@ -28,6 +28,10 @@ interface Task {
   dueDate?: Date | null;
   createdAt?: any;
   updatedAt?: any;
+  creatorId?: string;
+  creatorName?: string;
+  creatorPhoto?: string;
+  creatorEmoji?: string;
 }
 
 interface NewTask {
@@ -93,6 +97,10 @@ export default function KanbanBoard({ filters }: KanbanBoardProps) {
               dueDate: data.dueDate ? (data.dueDate.toDate ? data.dueDate.toDate() : parseDateInput(data.dueDate)) : null,
               createdAt: data.createdAt,
               updatedAt: data.updatedAt,
+              creatorId: data.creatorId || '',
+              creatorName: data.creatorName || '',
+              creatorPhoto: data.creatorPhoto || '',
+              creatorEmoji: data.creatorEmoji || '',
             });
           }
           return map;
@@ -234,6 +242,10 @@ export default function KanbanBoard({ filters }: KanbanBoardProps) {
       projectId: projId,
       tags: newTask.tags,
       commentsCount: 0,
+      creatorId: user?.uid || '',
+      creatorName: user?.displayName || 'Usuario',
+      creatorPhoto: user?.photoURL || '',
+      creatorEmoji: ''
     };
 
     const result = await createTask(taskPayload);
@@ -683,7 +695,7 @@ export default function KanbanBoard({ filters }: KanbanBoardProps) {
                       );
                     })}
                   </Box>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1, mt: 2, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1, mt: 2, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'text.secondary' }}>
                       <CalendarTodayIcon fontSize="small" />
                       <Typography variant="caption" sx={{ color: 'text.secondary' }}>
@@ -692,6 +704,14 @@ export default function KanbanBoard({ filters }: KanbanBoardProps) {
                           : 'Sin fecha'}
                       </Typography>
                     </Box>
+                    {task.projectId !== user?.uid && task.creatorId && task.creatorId !== user?.uid && (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 0.8, py: 0.4, borderRadius: 1, bgcolor: 'rgba(0, 0, 0, 0.04)' }}>
+                        <Typography sx={{ fontSize: '0.95rem' }}>{task.creatorEmoji || '👤'}</Typography>
+                        <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
+                          {task.creatorName}
+                        </Typography>
+                      </Box>
+                    )}
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'text.secondary' }}>
                       <CommentIcon fontSize="small" />
                       <Typography variant="caption" sx={{ color: 'text.secondary' }}>
