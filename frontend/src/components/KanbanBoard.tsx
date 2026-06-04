@@ -95,6 +95,12 @@ export default function KanbanBoard() {
     'Completado': '#dcfce7'   // tono verde muy suave
   };
 
+  const taskBorderColors = ['#fb7185', '#34d399', '#60a5fa', '#f59e0b', '#8b5cf6', '#22c55e', '#38bdf8', '#f43f5e'];
+  const getTaskBorderColor = (task: TaskItem, index: number) => {
+    const id = typeof task.id === 'number' ? task.id : String(task.id).split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    return taskBorderColors[(id + index) % taskBorderColors.length];
+  };
+
   const addTag = () => {
     const tag = newTag.trim();
     if (tag && !newTask.tags.includes(tag)) {
@@ -180,7 +186,7 @@ export default function KanbanBoard() {
                 <Typography variant="h6" sx={{ fontWeight: 700 }}>{status}</Typography>
                 <Typography variant="subtitle2" sx={{ backgroundColor: 'rgba(0,0,0,0.06)', px: 1, py: 0.25, borderRadius: 1 }}>{`(${taskList.length})`}</Typography>
               </Box>
-              {taskList.map((task: TaskItem) => (
+              {taskList.map((task: TaskItem, index: number) => (
                 <Paper
                   key={task.id}
                   draggable
@@ -190,6 +196,8 @@ export default function KanbanBoard() {
                     mb: 2,
                     cursor: 'grab',
                     borderRadius: 3,
+                    backgroundColor: '#ffffff',
+                    border: `1.5px solid ${getTaskBorderColor(task, index)}`,
                     boxShadow: '0 10px 25px rgba(15, 23, 42, 0.08)',
                     transition: 'transform 0.25s ease, box-shadow 0.25s ease',
                     '&:hover': {

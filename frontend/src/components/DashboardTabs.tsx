@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type MouseEvent } from 'react';
 import { parseDateInput } from '../utils/dateUtils';
 import { Paper, Typography, Button, TextField, Dialog, DialogTitle, DialogContent, DialogActions, Chip, Box, Select, MenuItem } from '@mui/material';
+import { alpha, useTheme } from '@mui/material/styles';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import CommentIcon from '@mui/icons-material/Comment';
 import LabelImportantIcon from '@mui/icons-material/LabelImportant';
@@ -60,9 +61,12 @@ export default function KanbanBoard({ filters }: KanbanBoardProps) {
   const [newTask, setNewTask] = useState<NewTask>({ title: '', description: '', status: 'Por hacer', tags: [] });
   const [newTag, setNewTag] = useState<string>('');
   const [lastDeletedTask, setLastDeletedTask] = useState<Task | null>(null);
+  const [ripples, setRipples] = useState<Record<string, { left: number; top: number; size: number; active: boolean }>>({});
+  const rashRef = useRef<Record<string, number>>({});
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { searchTerm } = useSearch();
 
+  const theme = useTheme();
   const { user } = useAuth();
   const { currentProject } = useProject();
 
@@ -130,6 +134,35 @@ export default function KanbanBoard({ filters }: KanbanBoardProps) {
     }
     setLastDeletedTask(null);
   };
+
+  const triggerRipple = (taskId: string, e: MouseEvent<HTMLElement>) => {
+    const target = e.currentTarget as HTMLElement;
+    const rect = target.getBoundingClientRect();
+    const size = Math.max(rect.width, rect.height) * 1.5;
+    const left = e.clientX - rect.left - size / 2;
+    const top = e.clientY - rect.top - size / 2;
+    setRipples((prev) => ({
+      ...prev,
+      [taskId]: { left, top, size, active: true }
+    }));
+
+    if (rashRef.current[taskId]) {
+      window.clearTimeout(rashRef.current[taskId]);
+    }
+    rashRef.current[taskId] = window.setTimeout(() => {
+      setRipples((prev) => ({
+        ...prev,
+        [taskId]: { ...(prev[taskId] ?? { left, top, size, active: false }), active: false }
+      }));
+      delete rashRef.current[taskId];
+    }, 500);
+  };
+
+  useEffect(() => {
+    return () => {
+      Object.values(rashRef.current).forEach((timer) => window.clearTimeout(timer));
+    };
+  }, []);
 
   const scheduleUndoState = (task: Task) => {
     setLastDeletedTask(task);
@@ -349,16 +382,38 @@ export default function KanbanBoard({ filters }: KanbanBoardProps) {
     'Completado': filteredTasks.filter(t => normalizeStatusLabel(t.status) === 'Completado')
   };
 
-  const columnColors: Record<StatusLabel, string> = {
-    'Por hacer': '#ffedd5',   // tono naranja muy suave
-    'En progreso': '#dbeafe', // tono azul muy suave
-    'Completado': '#dcfce7'   // tono verde muy suave
-  };
+  const columnColors: Record<StatusLabel, string> = theme.palette.mode === 'dark'
+    ? {
+        'Por hacer': 'rgba(245, 158, 11, 0.16)',
+        'En progreso': 'rgba(37, 99, 235, 0.16)',
+        'Completado': 'rgba(16, 185, 129, 0.16)'
+      }
+    : {
+        'Por hacer': '#ffedd5',   // tono naranja muy suave
+        'En progreso': '#dbeafe', // tono azul muy suave
+        'Completado': '#dcfce7'   // tono verde muy suave
+      };
 
-  const columnAccentBars: Record<StatusLabel, string[]> = {
-    'Por hacer': ['#ffd5a8', '#ffc69a', '#ffb07a'],
-    'En progreso': ['#9be3ff', '#6fcfff', '#2b9bff'],
-    'Completado': ['#c6f6d5', '#9fe9b8', '#6fe09a']
+  const columnAccentBars: Record<StatusLabel, string[]> = theme.palette.mode === 'dark'
+    ? {
+        'Por hacer': ['rgba(245, 158, 11, 0.32)', 'rgba(251, 191, 36, 0.26)', 'rgba(251, 211, 141, 0.22)'],
+        'En progreso': ['rgba(59, 130, 246, 0.32)', 'rgba(96, 165, 250, 0.26)', 'rgba(147, 197, 253, 0.22)'],
+        'Completado': ['rgba(52, 211, 153, 0.32)', 'rgba(74, 222, 128, 0.26)', 'rgba(134, 239, 172, 0.22)']
+      }
+    : {
+        'Por hacer': ['#ffd5a8', '#ffc69a', '#ffb07a'],
+        'En progreso': ['#9be3ff', '#6fcfff', '#2b9bff'],
+        'Completado': ['#c6f6d5', '#9fe9b8', '#6fe09a']
+      };
+
+  const taskBorderColors = ['#f97316', '#10b981', '#2563eb', '#d946ef', '#eab308', '#14b8a6', '#f43f5e', '#8b5cf6'];
+  const getTaskBorderColor = (task: Task, index: number) => {
+    const idHash = Array.from(task.id).reduce((sum, char) => sum + char.charCodeAt(0), 0);
+    return taskBorderColors[(idHash + index) % taskBorderColors.length];
+  };
+  const getTaskBorderStyle = (task: Task, index: number) => {
+    const color = getTaskBorderColor(task, index);
+    return theme.palette.mode === 'dark' ? alpha(color, 0.9) : color;
   };
 
   const tagPalette = [
@@ -421,25 +476,56 @@ export default function KanbanBoard({ filters }: KanbanBoardProps) {
                   />
                 ))}
               </Box>
-              {taskList.map((task) => (
+              {taskList.map((task, index) => (
                 <Paper
                   key={task.id}
                   draggable
+                  onMouseDown={(e) => triggerRipple(task.id, e)}
                   onDragStart={(e) => handleDragStart(e, task.id)}
                   onDragEnd={handleDragEnd}
                   sx={{
+                    position: 'relative',
+                    overflow: 'hidden',
                     p: 2.5,
                     mb: 2,
                     cursor: 'grab',
                     borderRadius: 3,
-                    boxShadow: '0 14px 30px rgba(15, 23, 42, 0.08)',
-                    transition: 'transform 200ms ease, box-shadow 200ms ease',
+                    backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.08)' : '#ffffff',
+                    border: `1.5px solid ${getTaskBorderStyle(task, index)}`,
+                    boxShadow: theme.palette.mode === 'dark' ? '0 20px 40px rgba(0, 0, 0, 0.28)' : '0 20px 40px rgba(15, 23, 42, 0.08)',
+                    transition: 'transform 220ms ease, box-shadow 220ms ease, background-color 220ms ease, border-color 220ms ease',
                     '&:hover': {
-                      transform: 'translateY(-4px)',
-                      boxShadow: '0 22px 45px rgba(15, 23, 42, 0.16)',
+                      transform: 'translateY(-6px)',
+                      boxShadow: theme.palette.mode === 'dark' ? '0 24px 60px rgba(0, 0, 0, 0.33)' : '0 24px 60px rgba(15, 23, 42, 0.14)',
+                      backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.55)',
+                      backdropFilter: theme.palette.mode === 'dark' ? 'blur(16px) saturate(150%)' : 'blur(16px) saturate(170%)',
+                      borderColor: theme.palette.mode === 'dark' ? 'rgba(96, 165, 250, 0.28)' : 'rgba(59, 130, 246, 0.22)'
                     },
+                    '@keyframes ripple': {
+                      '0%': { transform: 'scale(0)', opacity: 0.45 },
+                      '40%': { opacity: 0.25 },
+                      '100%': { transform: 'scale(1.2)', opacity: 0 }
+                    }
                   }}
                 >
+                  <Box sx={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+                    {ripples[task.id]?.active && (
+                      <Box
+                        sx={{
+                          position: 'absolute',
+                          left: ripples[task.id].left,
+                          top: ripples[task.id].top,
+                          width: ripples[task.id].size,
+                          height: ripples[task.id].size,
+                          borderRadius: '50%',
+                          backgroundColor: 'rgba(59, 130, 246, 0.16)',
+                          boxShadow: '0 0 0 1px rgba(59, 130, 246, 0.22)',
+                          mixBlendMode: 'screen',
+                          animation: 'ripple 520ms ease-out forwards'
+                        }}
+                      />
+                    )}
+                  </Box>
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
                     <Typography
                       variant="subtitle1"
