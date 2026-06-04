@@ -467,7 +467,14 @@ export default function KanbanBoard({ filters }: KanbanBoardProps) {
             onDragOver={handleDragOver}
           >
             <Paper sx={{ p: 2.5, bgcolor: columnColors[status as StatusLabel] || '#f5f5f5', borderRadius: 2, minHeight: 520, display: 'flex', flexDirection: 'column', borderLeft: `6px solid ${columnColors[status as StatusLabel] || '#f5f5f5'}` }}>
-              <Typography variant="h6" align="center" gutterBottom>{`${status} (${taskList.length})`}</Typography>
+              <Typography 
+                variant="h6" 
+                align="center" 
+                gutterBottom 
+                sx={{ color: taskList.length >= 10 ? '#dc2626' : 'inherit' }}
+              >
+                {`${status} (${taskList.length})`}
+              </Typography>
               <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1.2, mb: 1 }} aria-hidden>
                 {(columnAccentBars[status as StatusLabel] || ['#d1d5db','#9ca3af','#6b7280']).map((c, i) => (
                   <Box
