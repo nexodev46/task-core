@@ -424,6 +424,93 @@ export default function KanbanBoard({ filters }: KanbanBoardProps) {
         'Completado': ['#c6f6d5', '#9fe9b8', '#6fe09a']
       };
 
+  // Función para generar colores dinámicos como indicador de batería según cantidad de tareas
+  const getDynamicBarColors = (taskCount: number, columnStatus: StatusLabel): string[] => {
+    // Para la columna "Completado", solo cambiar a verde intenso cuando hay 10+ tareas
+    if (columnStatus === 'Completado') {
+      if (taskCount >= 10) {
+        // Verde intenso cuando hay muchas tareas completadas
+        return theme.palette.mode === 'dark'
+          ? ['rgba(34, 197, 94, 0.5)', 'rgba(74, 222, 128, 0.4)', 'rgba(134, 239, 172, 0.3)']
+          : ['#22c55e', '#4ade80', '#86efac'];
+      } else {
+        // Verde suave/natural siempre
+        return theme.palette.mode === 'dark'
+          ? ['rgba(52, 211, 153, 0.32)', 'rgba(74, 222, 128, 0.26)', 'rgba(134, 239, 172, 0.22)']
+          : ['#c6f6d5', '#9fe9b8', '#6fe09a'];
+      }
+    }
+
+    // Para "En progreso", comienza con azul (color natural) y progresa
+    if (columnStatus === 'En progreso') {
+      if (theme.palette.mode === 'dark') {
+        if (taskCount <= 2) {
+          // Azul: color natural
+          return ['rgba(59, 130, 246, 0.32)', 'rgba(96, 165, 250, 0.26)', 'rgba(147, 197, 253, 0.22)'];
+        } else if (taskCount <= 5) {
+          // Azul más intenso
+          return ['rgba(59, 130, 246, 0.45)', 'rgba(96, 165, 250, 0.38)', 'rgba(147, 197, 253, 0.30)'];
+        } else if (taskCount <= 9) {
+          // Naranja
+          return ['rgba(245, 158, 11, 0.32)', 'rgba(251, 191, 36, 0.26)', 'rgba(251, 211, 141, 0.22)'];
+        } else {
+          // Rojo
+          return ['rgba(239, 68, 68, 0.32)', 'rgba(248, 113, 113, 0.26)', 'rgba(252, 165, 165, 0.22)'];
+        }
+      } else {
+        if (taskCount <= 2) {
+          // Azul: color natural
+          return ['#9be3ff', '#6fcfff', '#2b9bff'];
+        } else if (taskCount <= 5) {
+          // Azul más intenso
+          return ['#5dade2', '#3b9fd9', '#0d7cc4'];
+        } else if (taskCount <= 9) {
+          // Naranja
+          return ['#ffd5a8', '#ffc69a', '#ffb07a'];
+        } else {
+          // Rojo
+          return ['#fecaca', '#fca5a5', '#f87171'];
+        }
+      }
+    }
+
+    // Para "Por hacer", comienza con naranja (color natural) y progresa
+    if (columnStatus === 'Por hacer') {
+      if (theme.palette.mode === 'dark') {
+        if (taskCount <= 2) {
+          // Naranja: color natural
+          return ['rgba(245, 158, 11, 0.32)', 'rgba(251, 191, 36, 0.26)', 'rgba(251, 211, 141, 0.22)'];
+        } else if (taskCount <= 5) {
+          // Naranja más intenso
+          return ['rgba(245, 158, 11, 0.45)', 'rgba(251, 191, 36, 0.38)', 'rgba(251, 211, 141, 0.30)'];
+        } else if (taskCount <= 9) {
+          // Naranja oscuro
+          return ['rgba(234, 88, 12, 0.32)', 'rgba(249, 115, 22, 0.26)', 'rgba(251, 146, 60, 0.22)'];
+        } else {
+          // Rojo
+          return ['rgba(239, 68, 68, 0.32)', 'rgba(248, 113, 113, 0.26)', 'rgba(252, 165, 165, 0.22)'];
+        }
+      } else {
+        if (taskCount <= 2) {
+          // Naranja: color natural
+          return ['#ffd5a8', '#ffc69a', '#ffb07a'];
+        } else if (taskCount <= 5) {
+          // Naranja más intenso
+          return ['#ffb84d', '#ffa726', '#ff9100'];
+        } else if (taskCount <= 9) {
+          // Naranja oscuro
+          return ['#ff8a50', '#ff6b35', '#ff5722'];
+        } else {
+          // Rojo
+          return ['#fecaca', '#fca5a5', '#f87171'];
+        }
+      }
+    }
+
+    // Por defecto (no debería llegar aquí)
+    return ['#d1d5db', '#9ca3af', '#6b7280'];
+  };
+
   const taskBorderColors = ['#f97316', '#10b981', '#2563eb', '#d946ef', '#eab308', '#14b8a6', '#f43f5e', '#8b5cf6'];
   const getTaskBorderColor = (task: Task, index: number) => {
     const idHash = Array.from(task.id).reduce((sum, char) => sum + char.charCodeAt(0), 0);
@@ -471,12 +558,12 @@ export default function KanbanBoard({ filters }: KanbanBoardProps) {
                 variant="h6" 
                 align="center" 
                 gutterBottom 
-                sx={{ color: taskList.length >= 10 ? '#dc2626' : 'inherit' }}
+                sx={{ color: status === 'Completado' ? 'inherit' : (taskList.length >= 10 ? '#dc2626' : 'inherit') }}
               >
                 {`${status} (${taskList.length})`}
               </Typography>
               <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1.2, mb: 1 }} aria-hidden>
-                {(columnAccentBars[status as StatusLabel] || ['#d1d5db','#9ca3af','#6b7280']).map((c, i) => (
+                {getDynamicBarColors(taskList.length, status as StatusLabel).map((c, i) => (
                   <Box
                     key={i}
                     component="span"
@@ -486,7 +573,8 @@ export default function KanbanBoard({ filters }: KanbanBoardProps) {
                       borderRadius: 3,
                       background: c,
                       display: 'inline-block',
-                      boxShadow: '0 6px 18px rgba(15, 23, 42, 0.06)'
+                      boxShadow: '0 6px 18px rgba(15, 23, 42, 0.06)',
+                      transition: 'background 0.3s ease'
                     }}
                   />
                 ))}
